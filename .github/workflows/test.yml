@@ -1,0 +1,40 @@
+name: Test
+
+on: push
+
+jobs:
+  build:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Node install
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+
+    - name: Cache directory
+      id: yarn-cache-dir-path
+      run: echo "::set-output name=dir::$(yarn cache dir)"
+
+    - name: Cache
+      uses: actions/cache@v3
+      id: yarn-cache
+      with:
+        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-yarn-
+
+    - name: Dependencies
+      run: yarn install
+
+    - name: Test
+      run: yarn test
+
+    - name: Lint
+      run: yarn lint

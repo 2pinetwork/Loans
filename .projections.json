@@ -1,0 +1,17 @@
+{
+  "contracts/*.sol": {
+    "type": "contract",
+    "dispatch": "npx hardhat test test/{}.js",
+    "alternate": "test/{}.js"
+  },
+
+  "scripts/*.js": {
+    "type": "script"
+  },
+
+  "test/*.js": {
+    "type": "test",
+    "dispatch": "npx hardhat test test/{}.js",
+    "alternate": "contracts/{}.sol"
+  }
+}
