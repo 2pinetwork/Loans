@@ -1,6 +1,6 @@
 require('@nomicfoundation/hardhat-toolbox')
-require('@nomiclabs/hardhat-etherscan')
-require('solidity-coverage')
+// require('@nomiclabs/hardhat-etherscan')
+// require('solidity-coverage')
 
 const loadAccounts = () => {
   const fs = require('fs')
@@ -18,7 +18,7 @@ const accounts = loadAccounts()
 
 module.exports = {
   solidity: {
-    version:  '0.8.15',
+    version:  '0.8.17',
     settings: {
       optimizer: {
         enabled: true,
