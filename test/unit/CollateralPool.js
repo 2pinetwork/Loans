@@ -5,13 +5,13 @@ const { expect }      = require('chai')
 const { ZERO_ADDRESS } = require('./helpers').constants
 
 describe('Collateral Pool', async function() {
-  let bob, Pool, token, CToken
+  let alice, bob, Pool, token, CToken
 
   before(async function() {
-    [, bob] = await ethers.getSigners()
-    token   = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
-    Pool    = await ethers.getContractFactory('CollateralPool')
-    CToken  = await ethers.getContractFactory('CToken')
+    [, alice, bob] = await ethers.getSigners()
+    token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+    Pool           = await ethers.getContractFactory('CollateralPool')
+    CToken         = await ethers.getContractFactory('CToken')
   })
 
   describe('Deployment', async function() {
@@ -33,12 +33,21 @@ describe('Collateral Pool', async function() {
       const pool = await Pool.deploy(token.address)
       const cToken = await CToken.attach(await pool.cToken())
 
+      await token.mint(alice.address, 1000)
       await token.mint(bob.address, 1000)
+      await token.connect(alice).approve(pool.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
       expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+
+      await token.mint(pool.address, 8) // just to change the shares proportion
+
+      expect(await pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await cToken.balanceOf(alice.address)).to.be.within(990, 1000)
+      expect(await pool.balance()).to.be.equal(2008)
     })
   })
 
@@ -57,7 +66,11 @@ describe('Collateral Pool', async function() {
 
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['withdraw(uint256)'](1000)).to.emit(pool, 'Withdraw')
+      expect(await pool.connect(bob)['withdraw(uint256)'](10)).to.emit(pool, 'Withdraw')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
+      expect(await token.balanceOf(bob.address)).to.be.equal(10)
+
+      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(1000)
     })
