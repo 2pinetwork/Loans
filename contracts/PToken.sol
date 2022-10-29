@@ -7,13 +7,13 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract CToken is ERC20 {
+contract PToken is ERC20 {
     IERC20Metadata public immutable asset;
     address public immutable pool;
 
     constructor(IERC20Metadata _asset) ERC20(
-        string(abi.encodePacked("2pi Collateral ", _asset.symbol())),
-        string(abi.encodePacked("2pi-C-", _asset.symbol()))
+        string(abi.encodePacked("2pi Provider ", _asset.symbol())),
+        string(abi.encodePacked("2pi-P-", _asset.symbol()))
     ) {
         asset = _asset;
         pool = msg.sender;
@@ -35,5 +35,4 @@ contract CToken is ERC20 {
     function burn(address _from, uint _amount) external onlyPool {
         _burn(_from, _amount);
     }
-
 }
