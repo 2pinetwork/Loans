@@ -4,6 +4,8 @@ pragma solidity ^0.8.17;
 import "./PiAdmin.sol";
 import "../interfaces/IGlobal.sol";
 
+import "hardhat/console.sol";
+
 interface IPool {
     function asset() external view returns (address);
     function decimals() external view returns (uint8);
@@ -48,6 +50,7 @@ contract Oracle is PiAdmin {
 
     function setToleration(uint _newToleration) external onlyAdmin {
         if (_newToleration > MAX_TOLERATION) { revert MaxToleration(); }
+        console.log("Toleration: ", toleration, _newToleration);
         if (toleration == _newToleration) { revert SameToleration(); }
 
         emit NewToleration(toleration, _newToleration);
