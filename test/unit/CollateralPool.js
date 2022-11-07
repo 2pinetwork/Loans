@@ -1,23 +1,25 @@
-// const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
-// const { anyValue }    = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
 const { expect }      = require('chai')
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
 describe('Collateral Pool', async function() {
-  let alice, bob, Pool, token, CToken
+  const deploy = async function() {
+    const [, alice, bob] = await ethers.getSigners()
+    const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+    const Pool           = await ethers.getContractFactory('CollateralPool')
+    const CToken         = await ethers.getContractFactory('CToken')
+    const pool           = await Pool.deploy(token.address)
+    const cToken         = await CToken.attach(await pool.cToken())
 
-  before(async function() {
-    [, alice, bob] = await ethers.getSigners()
-    token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
-    Pool           = await ethers.getContractFactory('CollateralPool')
-    CToken         = await ethers.getContractFactory('CToken')
-  })
+    return { alice, bob, cToken, pool, token, CToken, Pool }
+  }
 
   describe('Deployment', async function() {
     it('Should work', async function() {
-      const pool   = await Pool.deploy(token.address)
-      const cToken = await CToken.attach(await pool.cToken())
+      const { token, CToken, Pool } = await loadFixture(deploy)
+      const pool                    = await Pool.deploy(token.address)
+      const cToken                  = await CToken.attach(await pool.cToken())
 
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(cToken.address).to.not.be.equal(ZERO_ADDRESS)
@@ -28,10 +30,9 @@ describe('Collateral Pool', async function() {
     })
   })
 
-  describe('Deposit', async () => {
-    it('Should work', async () => {
-      const pool = await Pool.deploy(token.address)
-      const cToken = await CToken.attach(await pool.cToken())
+  describe('Deposit', async function() {
+    it('Should work', async function() {
+      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
 
       await token.mint(alice.address, 1000)
       await token.mint(bob.address, 1000)
@@ -51,10 +52,9 @@ describe('Collateral Pool', async function() {
     })
   })
 
-  describe('Withdraw', async () => {
-    it('Should work', async () => {
-      const pool = await Pool.deploy(token.address)
-      const cToken = await CToken.attach(await pool.cToken())
+  describe('Withdraw', async function() {
+    it('Should work', async function() {
+      const { bob, cToken, pool, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)

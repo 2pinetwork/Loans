@@ -26,8 +26,8 @@ describe('PToken', async function() {
     })
   })
 
-  describe('Mint', async () => {
-    it('Should work for `pool`', async () => {
+  describe('Mint', async function() {
+    it('Should work for `pool`', async function() {
       const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
@@ -37,7 +37,7 @@ describe('PToken', async function() {
       expect(await pToken.balanceOf(bob.address)).to.be.equal(13)
     })
 
-    it('Should not work for non-pool', async () => {
+    it('Should not work for non-pool', async function() {
       const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
@@ -48,8 +48,8 @@ describe('PToken', async function() {
     })
   })
 
-  describe('Burn', async () => {
-    it('Should work for `pool`', async () => {
+  describe('Burn', async function() {
+    it('Should work for `pool`', async function() {
       const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
@@ -63,7 +63,7 @@ describe('PToken', async function() {
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
     })
 
-    it('Should not work for non-pool', async () => {
+    it('Should not work for non-pool', async function() {
       const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
