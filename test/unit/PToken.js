@@ -1,20 +1,22 @@
-// const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
-// const { anyValue }    = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
+const { expect } = require('chai')
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
 describe('PToken', async function() {
-  let bob, PToken, Token
+  const deploy = async function() {
+    const [, bob] = await ethers.getSigners()
+    const PToken  = await ethers.getContractFactory('PToken')
+    const Token   = await ethers.getContractFactory('ERC20')
+    const token   = await Token.deploy('t', 't')
+    const pToken  = await PToken.deploy(token.address)
 
-  before(async function() {
-    [, bob] = await ethers.getSigners()
-    PToken  = await ethers.getContractFactory('PToken')
-    Token   = await ethers.getContractFactory('ERC20')
-  })
+    return { bob, pToken, token, PToken, Token }
+  }
 
   describe('Deployment', async function() {
     it('Should work', async function() {
-      const token = await Token.deploy('t', 't')
+      const { token, PToken } = await loadFixture(deploy)
       const pToken = await PToken.deploy(token.address)
 
       expect(pToken.address).to.not.be.equal(ZERO_ADDRESS)
@@ -26,8 +28,7 @@ describe('PToken', async function() {
 
   describe('Mint', async () => {
     it('Should work for `pool`', async () => {
-      const token = await Token.deploy('t', 't')
-      const pToken = await PToken.deploy(token.address)
+      const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
 
@@ -37,8 +38,7 @@ describe('PToken', async function() {
     })
 
     it('Should not work for non-pool', async () => {
-      const token = await Token.deploy('t', 't')
-      const pToken = await PToken.deploy(token.address)
+      const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
 
@@ -50,8 +50,7 @@ describe('PToken', async function() {
 
   describe('Burn', async () => {
     it('Should work for `pool`', async () => {
-      const token = await Token.deploy('t', 't')
-      const pToken = await PToken.deploy(token.address)
+      const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
 
@@ -65,8 +64,7 @@ describe('PToken', async function() {
     })
 
     it('Should not work for non-pool', async () => {
-      const token = await Token.deploy('t', 't')
-      const pToken = await PToken.deploy(token.address)
+      const { bob, pToken } = await loadFixture(deploy)
 
       expect(await pToken.balanceOf(bob.address)).to.be.equal(0)
 
