@@ -8,46 +8,59 @@ import "./PiAdmin.sol";
 contract Global is PiAdmin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    EnumerableSet.AddressSet public collateralPools;
-    EnumerableSet.AddressSet public liquidityPools;
+    EnumerableSet.AddressSet internal collateralPoolsSet;
+    EnumerableSet.AddressSet internal liquidityPoolsSet;
 
     error AlreadyExists();
+    error UnknownPool();
     error ZeroAddress();
 
     constructor() { }
 
     event NewCollateralPool(address);
     event NewLiquidityPool(address);
+    event CollateralPoolRemoved(address);
+    event LiquidityPoolRemoved(address);
 
     function addCollateralPool(address _pool) external onlyAdmin {
         if (_pool == address(0)) { revert ZeroAddress(); }
 
-        for (uint i = 0; i < collateralPools.length() ; i++) {
-            if (collateralPools.at(i) == _pool) { revert AlreadyExists(); }
-        }
-
-        collateralPools.add(_pool);
+        if (! collateralPoolsSet.add(_pool)) { revert AlreadyExists(); }
 
         emit NewCollateralPool(_pool);
     }
 
     function removeCollateralPool(address _pool) external onlyAdmin {
-        if (! collateralPools.remove(_pool)) { revert UnknownPool() };
+        if (_pool == address(0)) { revert ZeroAddress(); }
+
+        if (! collateralPoolsSet.remove(_pool)) { revert UnknownPool(); }
+
+        emit CollateralPoolRemoved(_pool);
     }
 
     function addLiquidityPool(address _pool) external onlyAdmin {
         if (_pool == address(0)) { revert ZeroAddress(); }
 
-        for (uint i = 0; i < liquidityPools.length() ; i++) {
-            if (liquidityPools.at(i) == _pool) { revert AlreadyExists(); }
+        for (uint i = 0; i < liquidityPoolsSet.length(); i++) {
+            if (liquidityPoolsSet.at(i) == _pool) { revert AlreadyExists(); }
         }
 
-        liquidityPools.add(_pool);
+        liquidityPoolsSet.add(_pool);
 
         emit NewLiquidityPool(_pool);
     }
 
     function removeLiquidityPool(address _pool) external onlyAdmin {
-        if (! liquidityPools.remove(_pool)) { revert UnknownPool() };
+        if (! liquidityPoolsSet.remove(_pool)) { revert UnknownPool(); }
+
+        emit LiquidityPoolRemoved(_pool);
+    }
+
+    function collateralPools() external view returns (address[] memory _pools) {
+        _pools = collateralPoolsSet.values();
+    }
+
+    function liquidityPools() external view returns (address[] memory _pools) {
+        _pools = liquidityPoolsSet.values();
     }
 }
