@@ -50,7 +50,6 @@ contract Oracle is PiAdmin {
 
     function setToleration(uint _newToleration) external onlyAdmin {
         if (_newToleration > MAX_TOLERATION) { revert MaxToleration(); }
-        console.log("Toleration: ", toleration, _newToleration);
         if (toleration == _newToleration) { revert SameToleration(); }
 
         emit NewToleration(toleration, _newToleration);

@@ -24,8 +24,20 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
 
+    function decimals() public view returns (uint8) {
+        return asset.decimals();
+    }
+
+    function balanceOf(address _account) public view returns (uint) {
+        return lToken.balanceOf(_account);
+    }
+
     function deposit(uint256 _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
         _deposit(_amount, _onBehalfOf);
+    }
+
+    function getPricePerFullShare() public view returns (uint) {
+        return (10 ** decimals());
     }
 
     function deposit(uint256 _amount) external nonReentrant  whenNotPaused {
