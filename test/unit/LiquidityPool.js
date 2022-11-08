@@ -18,8 +18,8 @@ describe('Liquidity Pool', async function() {
   describe('Deployment', async function() {
     it('Should work', async function() {
       const { token, Pool, LToken } = await loadFixture(deploy)
-      const pool            = await Pool.deploy(token.address)
-      const lToken          = await LToken.attach(await pool.lToken())
+      const pool                    = await Pool.deploy(token.address)
+      const lToken                  = await LToken.attach(await pool.lToken())
 
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)

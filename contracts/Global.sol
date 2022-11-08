@@ -41,9 +41,7 @@ contract Global is PiAdmin {
     function addLiquidityPool(address _pool) external onlyAdmin {
         if (_pool == address(0)) { revert ZeroAddress(); }
 
-        for (uint i = 0; i < liquidityPoolsSet.length(); i++) {
-            if (liquidityPoolsSet.at(i) == _pool) { revert AlreadyExists(); }
-        }
+        if (! liquidityPoolsSet.add(_pool)) { revert AlreadyExists(); }
 
         liquidityPoolsSet.add(_pool);
 

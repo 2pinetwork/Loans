@@ -78,13 +78,13 @@ contract Oracle is PiAdmin {
             IPool _pool = IPool(_pools[i]);
             uint _price = _normalizedPrice(_pool.asset());
             uint _poolPrecision = 10 ** _pool.decimals();
-            uint _missing = BASE_PRECISION / _poolPrecision;
+            uint _offset = BASE_PRECISION / _poolPrecision;
 
             uint _bal = (
                 // shares balance
                 _pool.balanceOf(_account) *
                 // Keep everything with 18 decimals at price level
-                _missing *
+                _offset *
                 // Price per share
                 _pool.getPricePerFullShare() /
                 // Share precision
@@ -104,8 +104,8 @@ contract Oracle is PiAdmin {
             uint _price = _normalizedPrice(_pool.asset());
 
             // Keep everything with 18 decimals at price level
-            uint _missing = BASE_PRECISION / (10 ** _pool.decimals());
-            uint _bal =  _pool.balance() * _missing;
+            uint _offset = BASE_PRECISION / (10 ** _pool.decimals());
+            uint _bal =  _pool.balance() * _offset;
 
             // Price is on 1e18 precision
             _available += (_bal * _price / BASE_PRECISION);
@@ -125,8 +125,8 @@ contract Oracle is PiAdmin {
 
         // ChainLink always returng 8 decimals
         // Represent price in 18 decimals precisions
-        uint _missing = BASE_PRECISION / (10 ** priceFeeds[_asset].decimals());
+        uint _offset = BASE_PRECISION / (10 ** priceFeeds[_asset].decimals());
 
-        return uint(_roundPrice) * _missing;
+        return uint(_roundPrice) * _offset;
     }
 }

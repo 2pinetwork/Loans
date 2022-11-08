@@ -1,7 +1,6 @@
 require('@nomicfoundation/hardhat-toolbox')
-require("@nomicfoundation/hardhat-chai-matchers")
-// require('@nomiclabs/hardhat-etherscan')
-// require('solidity-coverage')
+require('@nomicfoundation/hardhat-chai-matchers')
+require('solidity-coverage')
 
 const loadAccounts = () => {
   const fs = require('fs')

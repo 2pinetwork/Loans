@@ -8,8 +8,8 @@ describe('CToken', async function() {
     const [, bob] = await ethers.getSigners()
     const CToken  = await ethers.getContractFactory('CToken')
     const Token   = await ethers.getContractFactory('ERC20')
-    const token = await Token.deploy('t', 't')
-    const cToken = await CToken.deploy(token.address)
+    const token   = await Token.deploy('t', 't')
+    const cToken  = await CToken.deploy(token.address)
 
     return { bob, cToken, token, CToken, Token }
   }
@@ -17,7 +17,7 @@ describe('CToken', async function() {
   describe('Deployment', async function() {
     it('Should work', async function() {
       const { token, CToken } = await loadFixture(deploy)
-      const cToken = await CToken.deploy(token.address)
+      const cToken            = await CToken.deploy(token.address)
 
       expect(cToken.address).to.not.be.equal(ZERO_ADDRESS)
       expect(await cToken.name()).to.be.equal("2pi Collateral t")
