@@ -3,8 +3,8 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
-describe('Liquidity Pool', async function() {
-  const deploy = async function() {
+describe('Liquidity Pool', async function () {
+  const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
     const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
     const Pool           = await ethers.getContractFactory('LiquidityPool')
@@ -15,8 +15,8 @@ describe('Liquidity Pool', async function() {
     return { alice, bob, pool, lToken, token, Pool, LToken }
   }
 
-  describe('Deployment', async function() {
-    it('Should work', async function() {
+  describe('Deployment', async function () {
+    it('Should work', async function () {
       const { token, Pool, LToken } = await loadFixture(deploy)
       const pool                    = await Pool.deploy(token.address)
       const lToken                  = await LToken.attach(await pool.lToken())
@@ -24,14 +24,14 @@ describe('Liquidity Pool', async function() {
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
 
-      expect(await lToken.name()).to.be.equal("2pi Liquidity t")
-      expect(await lToken.symbol()).to.be.equal("2pi-L-t")
+      expect(await lToken.name()).to.be.equal('2pi Liquidity t')
+      expect(await lToken.symbol()).to.be.equal('2pi-L-t')
       expect(await lToken.decimals()).to.be.equal(18)
     })
   })
 
-  describe('Deposit', async function() {
-    it('Should work', async function() {
+  describe('Deposit', async function () {
+    it('Should work', async function () {
       const { alice, bob, pool, lToken, token } = await loadFixture(deploy)
 
       await token.mint(alice.address, 1000)
@@ -52,8 +52,8 @@ describe('Liquidity Pool', async function() {
     })
   })
 
-  describe('Withdraw', async function() {
-    it('Should work', async function() {
+  describe('Withdraw', async function () {
+    it('Should work', async function () {
       const { bob, pool, lToken, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)

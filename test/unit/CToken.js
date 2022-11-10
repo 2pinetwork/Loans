@@ -3,8 +3,8 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
-describe('CToken', async function() {
-  const deploy = async function() {
+describe('CToken', async function () {
+  const deploy = async function () {
     const [, bob] = await ethers.getSigners()
     const CToken  = await ethers.getContractFactory('CToken')
     const Token   = await ethers.getContractFactory('ERC20')
@@ -14,8 +14,8 @@ describe('CToken', async function() {
     return { bob, cToken, token, CToken, Token }
   }
 
-  describe('Deployment', async function() {
-    it('Should work', async function() {
+  describe('Deployment', async function () {
+    it('Should work', async function () {
       const { token, CToken } = await loadFixture(deploy)
       const cToken            = await CToken.deploy(token.address)
 
@@ -26,8 +26,8 @@ describe('CToken', async function() {
     })
   })
 
-  describe('Mint', async function() {
-    it('Should work for `pool`', async function() {
+  describe('Mint', async function () {
+    it('Should work for `pool`', async function () {
       const { bob, cToken } = await loadFixture(deploy)
 
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
@@ -37,7 +37,7 @@ describe('CToken', async function() {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(13)
     })
 
-    it('Should not work for non-pool', async function() {
+    it('Should not work for non-pool', async function () {
       const { bob, cToken } = await loadFixture(deploy)
 
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
@@ -48,8 +48,8 @@ describe('CToken', async function() {
     })
   })
 
-  describe('Burn', async function() {
-    it('Should work for `pool`', async function() {
+  describe('Burn', async function () {
+    it('Should work for `pool`', async function () {
       const { bob, cToken } = await loadFixture(deploy)
 
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
@@ -63,7 +63,7 @@ describe('CToken', async function() {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
     })
 
-    it('Should not work for non-pool', async function() {
+    it('Should not work for non-pool', async function () {
       const { bob, cToken } = await loadFixture(deploy)
 
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)

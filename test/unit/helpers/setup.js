@@ -1,2 +1,2 @@
-before(async function() {
+before(async function () {
 })

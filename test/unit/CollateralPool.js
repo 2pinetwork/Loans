@@ -3,8 +3,8 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
-describe('Collateral Pool', async function() {
-  const deploy = async function() {
+describe('Collateral Pool', async function () {
+  const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
     const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
     const Pool           = await ethers.getContractFactory('CollateralPool')
@@ -15,8 +15,8 @@ describe('Collateral Pool', async function() {
     return { alice, bob, cToken, pool, token, CToken, Pool }
   }
 
-  describe('Deployment', async function() {
-    it('Should work', async function() {
+  describe('Deployment', async function () {
+    it('Should work', async function () {
       const { token, CToken, Pool } = await loadFixture(deploy)
       const pool                    = await Pool.deploy(token.address)
       const cToken                  = await CToken.attach(await pool.cToken())
@@ -30,8 +30,8 @@ describe('Collateral Pool', async function() {
     })
   })
 
-  describe('Deposit', async function() {
-    it('Should work', async function() {
+  describe('Deposit', async function () {
+    it('Should work', async function () {
       const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
 
       await token.mint(alice.address, 1000)
@@ -52,8 +52,8 @@ describe('Collateral Pool', async function() {
     })
   })
 
-  describe('Withdraw', async function() {
-    it('Should work', async function() {
+  describe('Withdraw', async function () {
+    it('Should work', async function () {
       const { bob, cToken, pool, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)

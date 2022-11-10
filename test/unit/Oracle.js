@@ -3,8 +3,8 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
-describe('Oracle', async function() {
-  const deploy = async function() {
+describe('Oracle', async function () {
+  const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
     const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
     const CPool          = await ethers.getContractFactory('CollateralPool')
@@ -26,8 +26,8 @@ describe('Oracle', async function() {
     return { alice, bob, cPool, cToken, globalC, lPool, lToken, oracle, token, tokenFeed, Oracle, LPool }
   }
 
-  describe('Deployment', async function() {
-    it('Should work', async function() {
+  describe('Deployment', async function () {
+    it('Should work', async function () {
       const { globalC, Oracle } = await loadFixture(deploy)
 
       const oracle = await Oracle.deploy(globalC.address)
@@ -40,8 +40,8 @@ describe('Oracle', async function() {
     })
   })
 
-  describe('setToleration', async function() {
-    it('Should work', async function() {
+  describe('setToleration', async function () {
+    it('Should work', async function () {
       const { oracle } = await loadFixture(deploy)
 
       expect(await oracle.toleration()).to.be.equal(0)
@@ -53,7 +53,7 @@ describe('Oracle', async function() {
       expect(await oracle.toleration()).to.be.equal(10)
     })
 
-    it('Should revert for same quantity', async function() {
+    it('Should revert for same quantity', async function () {
       const { oracle } = await loadFixture(deploy)
 
       await oracle.setToleration(10)
@@ -64,8 +64,8 @@ describe('Oracle', async function() {
     })
   })
 
-  describe('addPriceOracle', async function() {
-    it('Should work', async function() {
+  describe('addPriceOracle', async function () {
+    it('Should work', async function () {
       const { oracle, token, tokenFeed } = await loadFixture(deploy)
 
       await expect(oracle.addPriceOracle(token.address, tokenFeed.address)).to.emit(
@@ -76,8 +76,8 @@ describe('Oracle', async function() {
     })
   })
 
-  describe('availableCollateral', async function() {
-    it('Should return right amount for wallet', async function() {
+  describe('availableCollateral', async function () {
+    it('Should return right amount for wallet', async function () {
       const { bob, oracle, cPool, token, tokenFeed } = await loadFixture(deploy)
       const amount = ethers.utils.parseUnits('2', 18)
 
@@ -95,8 +95,8 @@ describe('Oracle', async function() {
     })
   })
 
-  describe('availableLiquidity', async function() {
-    it('Should return right amount for wallet', async function() {
+  describe('availableLiquidity', async function () {
+    it('Should return right amount for wallet', async function () {
       const { alice, oracle, lPool, token, tokenFeed } = await loadFixture(deploy)
       const amount = ethers.utils.parseUnits('2', 18)
 
