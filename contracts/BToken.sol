@@ -18,6 +18,8 @@ contract CToken is ERC20 {
         pool = msg.sender;
     }
 
+    error TransferNotSupported();
+
     modifier onlyPool() {
         require(msg.sender == pool, "!Pool");
         _;
@@ -33,5 +35,17 @@ contract CToken is ERC20 {
 
     function burn(address _from, uint _amount) external onlyPool {
         _burn(_from, _amount);
+    }
+
+    /**
+     * @dev Being non transferrable, the debt token does not implement any of the
+     * standard ERC20 functions for transfer and allowance.
+     **/
+    function transfer(address /* recipient */, uint256 /* amount */) public virtual override returns (bool) {
+        revert TransferNotSupported();
+    }
+
+    function transferFrom(address /* from */, address /* recipient */, uint256 /* amount */) public virtual override returns (bool) {
+        revert TransferNotSupported();
     }
 }
