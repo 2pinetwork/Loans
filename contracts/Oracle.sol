@@ -49,8 +49,8 @@ contract Oracle is PiAdmin {
     event NewPriceFeed(address _token, address _feed);
 
     function setToleration(uint _newToleration) external onlyAdmin {
-        if (_newToleration > MAX_TOLERATION) { revert MaxToleration(); }
-        if (toleration == _newToleration) { revert SameToleration(); }
+        if (_newToleration > MAX_TOLERATION) revert MaxToleration();
+        if (toleration == _newToleration) revert SameToleration();
 
         emit NewToleration(toleration, _newToleration);
 
@@ -58,13 +58,13 @@ contract Oracle is PiAdmin {
     }
 
     function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin {
-        if (_token == address(0)) { revert ZeroAddress(); }
-        if (priceFeeds[_token] == _feed) { revert SameFeed(); }
+        if (_token == address(0)) revert ZeroAddress();
+        if (priceFeeds[_token] == _feed) revert SameFeed();
 
         (uint80 round, int price,,,) = _feed.latestRoundData();
-        if (round <= 0 || price <= 0) { revert InvalidFeed(); }
+        if (round <= 0 || price <= 0) revert InvalidFeed();
 
-        if (_feed.decimals() <= 6) { revert InvalidFeed(); }
+        if (_feed.decimals() <= 6) revert InvalidFeed();
 
         priceFeeds[_token] = _feed;
 
@@ -120,8 +120,8 @@ contract Oracle is PiAdmin {
             uint _timestamp,
             uint80 _answeredInRound
         ) =  priceFeeds[_asset].latestRoundData();
-        if (_id < _answeredInRound) { revert OldPrice(); }
-        if (_timestamp + toleration < block.timestamp) { revert OldPrice(); }
+        if (_id < _answeredInRound) revert OldPrice();
+        if (_timestamp + toleration < block.timestamp) revert OldPrice();
 
         // ChainLink always returng 8 decimals
         // Represent price in 18 decimals precisions

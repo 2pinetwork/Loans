@@ -11,7 +11,7 @@ abstract contract PiAdmin is AccessControl {
     }
 
     modifier onlyAdmin() {
-        if (! hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) { revert NotAdmin(); }
+        if (! hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         _;
     }
 }

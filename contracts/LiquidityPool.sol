@@ -59,7 +59,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
             _shares = (_amount * _supply) / _before;
         }
 
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
         lToken.mint(_onBehalfOf, _shares);
 
@@ -92,7 +92,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
     }
 
     function _withdraw(uint256 _shares, address _to) internal returns (uint256) {
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
         uint _amount = (balance() * _shares) / lToken.totalSupply();
 
