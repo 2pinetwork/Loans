@@ -24,6 +24,18 @@ contract CollateralPool is Pausable, ReentrancyGuard {
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
 
+    function decimals() public view returns (uint8) {
+        return asset.decimals();
+    }
+
+    function balanceOf(address _account) public view returns (uint) {
+        return cToken.balanceOf(_account);
+    }
+
+    function getPricePerFullShare() public view returns (uint) {
+        return (10 ** decimals());
+    }
+
     function deposit(uint256 _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
         _deposit(_amount, _onBehalfOf);
     }
@@ -47,7 +59,7 @@ contract CollateralPool is Pausable, ReentrancyGuard {
             _shares = (_amount * _supply) / _before;
         }
 
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
         cToken.mint(_onBehalfOf, _shares);
 
@@ -80,7 +92,7 @@ contract CollateralPool is Pausable, ReentrancyGuard {
     }
 
     function _withdraw(uint256 _shares, address _to) internal returns (uint256) {
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
         uint _amount = (balance() * _shares) / cToken.totalSupply();
 

@@ -7,13 +7,13 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract PToken is ERC20 {
+contract LToken is ERC20 {
     IERC20Metadata public immutable asset;
     address public immutable pool;
 
     constructor(IERC20Metadata _asset) ERC20(
-        string(abi.encodePacked("2pi Provider ", _asset.symbol())),
-        string(abi.encodePacked("2pi-P-", _asset.symbol()))
+        string(abi.encodePacked("2pi Liquidity ", _asset.symbol())),
+        string(abi.encodePacked("2pi-L-", _asset.symbol()))
     ) {
         asset = _asset;
         pool = msg.sender;

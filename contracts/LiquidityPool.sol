@@ -6,17 +6,17 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {PToken} from "./PToken.sol";
+import {LToken} from "./LToken.sol";
 
-contract ProviderPool is Pausable, ReentrancyGuard {
+contract LiquidityPool is Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
-    PToken public immutable pToken;
+    LToken public immutable lToken;
 
     constructor(IERC20Metadata _asset) {
         asset = _asset;
 
-        pToken = new PToken(asset);
+        lToken = new LToken(asset);
     }
 
     error ZeroShares();
@@ -24,8 +24,20 @@ contract ProviderPool is Pausable, ReentrancyGuard {
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
 
+    function decimals() public view returns (uint8) {
+        return asset.decimals();
+    }
+
+    function balanceOf(address _account) public view returns (uint) {
+        return lToken.balanceOf(_account);
+    }
+
     function deposit(uint256 _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
         _deposit(_amount, _onBehalfOf);
+    }
+
+    function getPricePerFullShare() public view returns (uint) {
+        return (10 ** decimals());
     }
 
     function deposit(uint256 _amount) external nonReentrant  whenNotPaused {
@@ -38,7 +50,7 @@ contract ProviderPool is Pausable, ReentrancyGuard {
         asset.safeTransferFrom(msg.sender, address(this), _amount);
 
         // SaveGas
-        uint _supply = pToken.totalSupply();
+        uint _supply = lToken.totalSupply();
         uint _shares;
 
         if (_supply <= 0) {
@@ -47,9 +59,9 @@ contract ProviderPool is Pausable, ReentrancyGuard {
             _shares = (_amount * _supply) / _before;
         }
 
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
-        pToken.mint(_onBehalfOf, _shares);
+        lToken.mint(_onBehalfOf, _shares);
 
         emit Deposit(msg.sender, _onBehalfOf, _amount, _shares);
     }
@@ -76,15 +88,15 @@ contract ProviderPool is Pausable, ReentrancyGuard {
     }
 
     function withdrawAll() external nonReentrant whenNotPaused returns (uint256) {
-        return _withdraw(pToken.balanceOf(msg.sender), msg.sender);
+        return _withdraw(lToken.balanceOf(msg.sender), msg.sender);
     }
 
     function _withdraw(uint256 _shares, address _to) internal returns (uint256) {
-        if (_shares <= 0) { revert ZeroShares(); }
+        if (_shares <= 0) revert ZeroShares();
 
-        uint _amount = (balance() * _shares) / pToken.totalSupply();
+        uint _amount = (balance() * _shares) / lToken.totalSupply();
 
-        pToken.burn(msg.sender, _shares);
+        lToken.burn(msg.sender, _shares);
 
         asset.safeTransfer(_to, _amount);
 

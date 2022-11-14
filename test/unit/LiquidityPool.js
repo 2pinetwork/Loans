@@ -3,36 +3,36 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { ZERO_ADDRESS } = require('./helpers').constants
 
-describe('Collateral Pool', async function () {
+describe('Liquidity Pool', async function () {
   const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
     const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
-    const Pool           = await ethers.getContractFactory('CollateralPool')
-    const CToken         = await ethers.getContractFactory('CToken')
+    const Pool           = await ethers.getContractFactory('LiquidityPool')
+    const LToken         = await ethers.getContractFactory('LToken')
     const pool           = await Pool.deploy(token.address)
-    const cToken         = await CToken.attach(await pool.cToken())
+    const lToken         = await LToken.attach(await pool.lToken())
 
-    return { alice, bob, cToken, pool, token, CToken, Pool }
+    return { alice, bob, pool, lToken, token, Pool, LToken }
   }
 
   describe('Deployment', async function () {
     it('Should work', async function () {
-      const { token, CToken, Pool } = await loadFixture(deploy)
+      const { token, Pool, LToken } = await loadFixture(deploy)
       const pool                    = await Pool.deploy(token.address)
-      const cToken                  = await CToken.attach(await pool.cToken())
+      const lToken                  = await LToken.attach(await pool.lToken())
 
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
-      expect(cToken.address).to.not.be.equal(ZERO_ADDRESS)
+      expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
 
-      expect(await cToken.name()).to.be.equal("2pi Collateral t")
-      expect(await cToken.symbol()).to.be.equal("2pi-C-t")
-      expect(await cToken.decimals()).to.be.equal(18)
+      expect(await lToken.name()).to.be.equal('2pi Liquidity t')
+      expect(await lToken.symbol()).to.be.equal('2pi-L-t')
+      expect(await lToken.decimals()).to.be.equal(18)
     })
   })
 
   describe('Deposit', async function () {
     it('Should work', async function () {
-      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
+      const { alice, bob, pool, lToken, token } = await loadFixture(deploy)
 
       await token.mint(alice.address, 1000)
       await token.mint(bob.address, 1000)
@@ -41,37 +41,37 @@ describe('Collateral Pool', async function () {
 
       // Overloading Ethers-v6
       expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
-      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
 
       await token.mint(pool.address, 8) // just to change the shares proportion
 
       expect(await pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
-      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
-      expect(await cToken.balanceOf(alice.address)).to.be.within(990, 1000)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
       expect(await pool.balance()).to.be.equal(2008)
     })
   })
 
   describe('Withdraw', async function () {
     it('Should work', async function () {
-      const { bob, cToken, pool, token } = await loadFixture(deploy)
+      const { bob, pool, lToken, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
       expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
-      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
 
       // Overloading Ethers-v6
       expect(await pool.connect(bob)['withdraw(uint256)'](10)).to.emit(pool, 'Withdraw')
-      expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(10)
 
       expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
-      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(1000)
     })
   })
