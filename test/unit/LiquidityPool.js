@@ -284,6 +284,5 @@ describe('Liquidity Pool', async function () {
         depositAmount.sub(2)
       )
     })
-
   })
 })

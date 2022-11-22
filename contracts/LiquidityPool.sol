@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
+
 // import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -18,13 +19,13 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
-    uint public constant MAX_RATE = 1e18; // Max interest rate 100% JIC
+    uint public constant MAX_INTEREST_RATE = 1e18; // Max interest rate 100% JIC
 
     // 1%
-    uint public rate = 0.01e18;
+    uint public interestRate = 0.01e18;
 
-     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
-  mapping(address => uint40) internal _timestamps;
+    // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
+    mapping(address => uint40) internal _timestamps;
 
     constructor(IERC20Metadata _asset) {
         asset = _asset;
@@ -44,19 +45,21 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
     event Borrow(address _sender, uint _amount);
     event Repay(address _sender, uint _amount);
-    event NewInterestRate(uint _oldRate, uint _newRate);
+    event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
+
+    /*********** COMMON FUNCTIONS ***********/
 
     function decimals() public view returns (uint8) {
         return asset.decimals();
     }
 
-    function setInterestRate(uint _newRate) external onlyAdmin {
-        if (_newRate > MAX_RATE) { revert GreaterThan("MAX_RATE"); }
-        if (dToken.totalSupply() > 0) { revert AlreadyInitialized(); }
+    function setInterestInterestRate(uint _newInterestRate) external onlyAdmin {
+        if (_newInterestRate > MAX_INTEREST_RATE) revert GreaterThan("MAX_INTEREST_RATE");
+        if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
-        emit NewInterestRate(rate, _newRate);
+        emit NewInterestInterestRate(interestRate, _newInterestRate);
 
-        rate = _newRate;
+        interestRate = _newInterestRate;
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -95,15 +98,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     /**
-        * @dev Withdraws an `amount` of underlying asset from the reserve, burning the equivalent aTokens owned
-    * E.g. User has 100 aUSDC, calls withdraw() and receives 100 USDC, burning the 100 aUSDC
-    * @param _shares The shares to be withdrawn
-    *   - Send the value type(uint).max in order to withdraw the whole aToken balance
-    * @param _to Address that will receive the underlying, same as msg.sender if the user
-        *   wants to receive it on his own wallet, or a different address if the beneficiary is a
-            *   different wallet
-    * @return The final amount withdrawn
-    **/
+     * @dev Withdraws an `amount` of underlying asset from the reserve, burning the equivalent aTokens owned
+     * E.g. User has 100 aUSDC, calls withdraw() and receives 100 USDC, burning the 100 aUSDC
+     * @param _shares The shares to be withdrawn
+     *   - Send the value type(uint).max in order to withdraw the whole aToken balance
+     * @param _to Address that will receive the underlying, same as msg.sender if the user
+     *   wants to receive it on his own wallet, or a different address if the beneficiary is a
+     *   different wallet
+     * @return The final amount withdrawn
+     **/
     function withdraw(
         uint _shares,
         address _to
@@ -147,7 +150,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         asset.safeTransfer(_account, _amount);
 
-        // New amount + interest tokens to be minted since the last movement
+        // New amount + interest tokens to be minted since the last interaction
         uint _amountToMint = _amount + _debtTokenDiff(_account);
 
         dToken.mint(_account, _amountToMint);
@@ -213,16 +216,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return _bal * _calculateInterestRatio(_account) / PRECISION;
     }
 
-    function getPricePerFullShare() public view returns (uint) {
-        return (10 ** decimals());
-    }
-
     function _calculateInterestRatio(address _account) internal view returns (uint) {
-        // _calculateCompoundedInterest(_timestamps[account])
-        return _calculateSimpleInterestRatio(_timestamps[_account]);
-    }
-
-    function _calculateSimpleInterestRatio(uint40 _lastTimestamp) internal view returns (uint) {
-        return rate * (block.timestamp - uint(_lastTimestamp)) / SECONDS_PER_YEAR;
+        return interestRate * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR;
     }
 }
