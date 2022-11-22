@@ -6,49 +6,74 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import {DToken} from "./DToken.sol";
 import {LToken} from "./LToken.sol";
-import {BToken} from "./BToken.sol";
+import {PiAdmin} from "./PiAdmin.sol";
 
-contract LiquidityPool is Pausable, ReentrancyGuard {
+contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     LToken public immutable lToken;
-    BToken public immutable bToken;
+    DToken public immutable dToken;
+
+    uint public constant PRECISION = 1e18;
+    uint public constant SECONDS_PER_YEAR = 365 days;
+    uint public constant MAX_RATE = 1e18; // Max interest rate 100% JIC
+
+    // 1%
+    uint public rate = 0.01e18;
+
+     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
+  mapping(address => uint40) internal _timestamps;
 
     constructor(IERC20Metadata _asset) {
         asset = _asset;
 
         lToken = new LToken(asset);
-        bToken = new BToken(asset);
+        dToken = new DToken(asset);
     }
 
+    error NoDebt();
     error ZeroShares();
+    error ZeroAmount();
+    error WithoutLiquidity();
+    error GreaterThan(string _constant);
+    error AlreadyInitialized();
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
     event Borrow(address _sender, uint _amount);
     event Repay(address _sender, uint _amount);
+    event NewInterestRate(uint _oldRate, uint _newRate);
 
     function decimals() public view returns (uint8) {
         return asset.decimals();
     }
 
-    /*********** LIQUIDITY FUNCTIONS ***********/
+    function setInterestRate(uint _newRate) external onlyAdmin {
+        if (_newRate > MAX_RATE) { revert GreaterThan("MAX_RATE"); }
+        if (dToken.totalSupply() > 0) { revert AlreadyInitialized(); }
 
+        emit NewInterestRate(rate, _newRate);
+
+        rate = _newRate;
+    }
+
+    /*********** LIQUIDITY FUNCTIONS ***********/
     function balanceOf(address _account) public view returns (uint) {
         return lToken.balanceOf(_account);
     }
 
-    function deposit(uint256 _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
         _deposit(_amount, _onBehalfOf);
     }
 
-    function deposit(uint256 _amount) external nonReentrant  whenNotPaused {
+    function deposit(uint _amount) external nonReentrant  whenNotPaused {
         _deposit(_amount, msg.sender);
     }
 
     function _deposit(uint _amount, address _onBehalfOf) internal {
-        uint256 _before = balance();
+        uint _before = balance();
 
         asset.safeTransferFrom(msg.sender, address(this), _amount);
 
@@ -73,28 +98,28 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
         * @dev Withdraws an `amount` of underlying asset from the reserve, burning the equivalent aTokens owned
     * E.g. User has 100 aUSDC, calls withdraw() and receives 100 USDC, burning the 100 aUSDC
     * @param _shares The shares to be withdrawn
-    *   - Send the value type(uint256).max in order to withdraw the whole aToken balance
+    *   - Send the value type(uint).max in order to withdraw the whole aToken balance
     * @param _to Address that will receive the underlying, same as msg.sender if the user
         *   wants to receive it on his own wallet, or a different address if the beneficiary is a
             *   different wallet
     * @return The final amount withdrawn
     **/
     function withdraw(
-        uint256 _shares,
+        uint _shares,
         address _to
-    ) external nonReentrant whenNotPaused returns (uint256) {
+    ) external nonReentrant whenNotPaused returns (uint) {
         return _withdraw(_shares, _to);
     }
 
-    function withdraw(uint256 _shares) external nonReentrant whenNotPaused returns (uint256) {
+    function withdraw(uint _shares) external nonReentrant whenNotPaused returns (uint) {
         return _withdraw(_shares, msg.sender);
     }
 
-    function withdrawAll() external nonReentrant whenNotPaused returns (uint256) {
+    function withdrawAll() external nonReentrant whenNotPaused returns (uint) {
         return _withdraw(lToken.balanceOf(msg.sender), msg.sender);
     }
 
-    function _withdraw(uint256 _shares, address _to) internal returns (uint256) {
+    function _withdraw(uint _shares, address _to) internal returns (uint) {
         if (_shares <= 0) revert ZeroShares();
 
         uint _amount = (balance() * _shares) / lToken.totalSupply();
@@ -108,7 +133,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
         return _amount;
     }
 
-    function balance() public view returns (uint256) {
+    function balance() public view returns (uint) {
         return asset.balanceOf(address(this));
     }
 
@@ -116,23 +141,52 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
 
     function borrow(uint _amount) external nonReentrant {
         if (_amount <= 0) revert ZeroAmount();
+        if (_amount > balance()) revert WithoutLiquidity();
 
-        bToken.mint(msg.sender, _amount);
-        asset.safeTransfer(msg.sender, _amount);
+        address _account = msg.sender;
 
-        emit Borrow(msg.sender, _amount);
+        asset.safeTransfer(_account, _amount);
+
+        // New amount + interest tokens to be minted since the last movement
+        uint _amountToMint = _amount + _debtTokenDiff(_account);
+
+        dToken.mint(_account, _amountToMint);
+
+        _timestamps[_account] = uint40(block.timestamp);
+
+        emit Borrow(_account, _amount);
     }
 
     function repay(uint _amount) external nonReentrant {
         if (_amount <= 0) revert ZeroAmount();
+        if (_timestamps[msg.sender] == 0) revert NoDebt();
 
         uint _totalDebt = _debt(msg.sender);
+        // Get tokens from last interaction
+        uint _debtTokens = dToken.balanceOf(msg.sender);
 
-        if (_amount > _totalDebt) _amount = _totalDebt;
+        if (_amount >= _totalDebt) {
+            // All debt is repaid
+            _amount = _totalDebt;
+            _timestamps[msg.sender] = 0;
 
-        asset.safeTransferFrom(msg.sender, _amount);
+            // Burn `_debtTokens` instead of _amount because of the
+            // not-persisted-interests since last interaction
+            dToken.burn(msg.sender, _debtTokens);
+        } else {
+            uint _remaining = _totalDebt - _amount;
 
-        bToken.burn(msg.sender, _amount);
+            // Mint "diff" since last lnteraction
+            if (_remaining > _debtTokens) dToken.mint(msg.sender, _remaining - _debtTokens);
+
+            // Burn "diff" since last lnteraction
+            if (_remaining < _debtTokens) dToken.burn(msg.sender, _debtTokens - _remaining);
+
+            // Update last user interaction
+            _timestamps[msg.sender] = uint40(block.timestamp);
+        }
+
+        asset.safeTransferFrom(msg.sender, address(this), _amount);
 
         emit Repay(msg.sender, _amount);
     }
@@ -146,40 +200,29 @@ contract LiquidityPool is Pausable, ReentrancyGuard {
     }
 
     function _debt(address _account) internal view returns (uint) {
-        uint _amount = bToken.balanceOf(_account);
-        if (_amount <= 0) return 0;
+        uint _bal = dToken.balanceOf(_account);
+        if (_bal <= 0) return 0;
 
-        return _amount.mulRay(_calculateInterest(_account));
+        return _bal + (_bal * _calculateInterestRatio(_account) / PRECISION);
+    }
+
+    function _debtTokenDiff(address _account) internal view returns (uint) {
+        uint _bal = dToken.balanceOf(_account);
+        if (_bal <= 0) return 0;
+
+        return _bal * _calculateInterestRatio(_account) / PRECISION;
     }
 
     function getPricePerFullShare() public view returns (uint) {
         return (10 ** decimals());
     }
 
-    function _calculateInterest(address _account) internal view returns (uint) {
-        _calculateCompoundedInterest(_timestamps[account])
+    function _calculateInterestRatio(address _account) internal view returns (uint) {
+        // _calculateCompoundedInterest(_timestamps[account])
+        return _calculateSimpleInterestRatio(_timestamps[_account]);
     }
 
-    function _calculateCompoundedInterest( uint40 lastUpdateTimestamp) internal pure returns (uint256) {
-    //solium-disable-next-line
-    uint256 exp = block.timestamp - uint256(lastUpdateTimestamp);
-
-    if (exp == 0) {
-      return WadRayMath.ray();
+    function _calculateSimpleInterestRatio(uint40 _lastTimestamp) internal view returns (uint) {
+        return rate * (block.timestamp - uint(_lastTimestamp)) / SECONDS_PER_YEAR;
     }
-
-    uint256 expMinusOne = exp - 1;
-
-    uint256 expMinusTwo = exp > 2 ? exp - 2 : 0;
-
-    uint256 ratePerSecond = rate / SECONDS_PER_YEAR;
-
-    uint256 basePowerTwo = ratePerSecond.rayMul(ratePerSecond);
-    uint256 basePowerThree = basePowerTwo.rayMul(ratePerSecond);
-
-    uint256 secondTerm = exp * expMinusOne * basePowerTwo / 2;
-    uint256 thirdTerm = exp * expMinusOne * expMinusTwo * basePowerThree / 6;
-
-    return WadRayMath.ray() + (ratePerSecond * exp) + secondTerm + thirdTerm;
-  }
 }
