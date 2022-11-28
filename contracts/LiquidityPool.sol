@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {DToken} from "./DToken.sol";
-import {LToken} from "./LToken.sol";
+import {DToken}  from "./DToken.sol";
+import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
-import {Oracle} from "./Oracle.sol";
+import {Oracle}  from "./Oracle.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
@@ -28,6 +28,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
+
+    // Fees
+    uint public constant MAX_FEE = 0.1e18; // Max fee 10% JIC
+    uint public protocolFee;
 
     constructor(IERC20Metadata _asset) {
         asset = _asset;
@@ -53,6 +57,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Repay(address _sender, uint _amount);
     event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
     event NewOracle(address _oldOracle, address _newOracle);
+    event NewProtocolFee(uint _oldFee, uint _newFee);
 
     /*********** COMMON FUNCTIONS ***********/
 
@@ -77,6 +82,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit NewOracle(address(oracle), _oracle);
 
         oracle = Oracle(_oracle);
+    }
+
+    function setProtocolFee(uint _fee) external onlyAdmin {
+        if (_fee == protocolFee) revert SameValue();
+        if (_fee > MAX_INTEREST_RATE) revert GreaterThan("MAX_INTEREST_RATE");
+
+        emit NewProtocolFee(protocolFee, _fee);
+
+        protocolFee = _fee;
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -209,6 +223,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         asset.safeTransferFrom(msg.sender, address(this), _amount);
 
+        _chargeFees(msg.sender, _amount);
+
         emit Repay(msg.sender, _amount);
     }
 
@@ -242,5 +258,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
 
         if (_amount > _available) revert InsufficientFunds();
+    }
+
+    function _chargeFees(address _account, uint _amount) internal {
+
     }
 }
