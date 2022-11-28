@@ -27,10 +27,10 @@ const getInterest = function (base, seconds) {
 }
 
 const deployOracle = async function () {
-  const GlobalC        = await ethers.getContractFactory('Global')
-  const Oracle         = await ethers.getContractFactory('Oracle')
-  const globalC        = await GlobalC.deploy()
-  const oracle         = await Oracle.deploy(globalC.address)
+  const GlobalC = await ethers.getContractFactory('Global')
+  const Oracle  = await ethers.getContractFactory('Oracle')
+  const globalC = await GlobalC.deploy()
+  const oracle  = await Oracle.deploy(globalC.address)
 
   return { globalC, oracle }
 }
@@ -64,12 +64,12 @@ describe('Liquidity Pool', async function () {
   const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
     const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
-    const LPool           = await ethers.getContractFactory('LiquidityPool')
-    const CPool           = await ethers.getContractFactory('CollateralPool')
+    const LPool          = await ethers.getContractFactory('LiquidityPool')
+    const CPool          = await ethers.getContractFactory('CollateralPool')
     const LToken         = await ethers.getContractFactory('LToken')
     const DToken         = await ethers.getContractFactory('DToken')
-    const lPool           = await LPool.deploy(token.address)
-    const cPool           = await CPool.deploy(token.address)
+    const lPool          = await LPool.deploy(token.address)
+    const cPool          = await CPool.deploy(token.address)
     const lToken         = await LToken.attach(await lPool.lToken())
     const dToken         = await DToken.attach(await lPool.dToken())
     const TokenFeed      = await ethers.getContractFactory('PriceFeedMock')
@@ -100,7 +100,7 @@ describe('Liquidity Pool', async function () {
     it('Should work', async function () {
       const { token, LPool, LToken } = await loadFixture(deploy)
       const lPool                    = await LPool.deploy(token.address)
-      const lToken                  = await LToken.attach(await lPool.lToken())
+      const lToken                   = await LToken.attach(await lPool.lToken())
 
       expect(lPool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
@@ -182,7 +182,7 @@ describe('Liquidity Pool', async function () {
       )
     })
 
-    it('Should be reverted without collateral', async () => {
+    it('Should be reverted without collateral', async function () {
       const {
         bob,
         cPool,
