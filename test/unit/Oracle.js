@@ -6,7 +6,8 @@ const { ZERO_ADDRESS } = require('./helpers').constants
 describe('Oracle', async function () {
   const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
-    const token          = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+    const Token          = await ethers.getContractFactory('ERC20Mintable')
+    const token          = await Token.deploy('t', 't')
     const CPool          = await ethers.getContractFactory('CollateralPool')
     const LPool          = await ethers.getContractFactory('LiquidityPool')
     const cPool          = await CPool.deploy(token.address)
@@ -16,14 +17,30 @@ describe('Oracle', async function () {
     const globalC        = await (await ethers.getContractFactory('Global')).deploy()
     const Oracle         = await ethers.getContractFactory('Oracle')
     const oracle         = await Oracle.deploy(globalC.address)
-    const tokenFeed      = await (await ethers.getContractFactory('PriceFeedMock')).deploy(13e8)
+    const TokenFeed      = await ethers.getContractFactory('PriceFeedMock')
+    const tokenFeed      = await TokenFeed.deploy(13e8)
 
     await Promise.all([
       globalC.addCollateralPool(cPool.address),
       globalC.addLiquidityPool(lPool.address),
     ])
 
-    return { alice, bob, cPool, cToken, globalC, lPool, lToken, oracle, token, tokenFeed, Oracle, LPool }
+    return {
+      LPool,
+      Oracle,
+      Token,
+      TokenFeed,
+      alice,
+      bob,
+      cPool,
+      cToken,
+      globalC,
+      lPool,
+      lToken,
+      oracle,
+      token,
+      tokenFeed,
+    }
   }
 
   describe('Deployment', async function () {
@@ -76,41 +93,84 @@ describe('Oracle', async function () {
     })
   })
 
-  describe('availableCollateral', async function () {
-    it('Should return right amount for wallet', async function () {
+  // describe('availableCollateral', async function () {
+  //   it('Should return right amount for wallet', async function () {
+  //     const { bob, oracle, cPool, token, tokenFeed } = await loadFixture(deploy)
+  //     const amount = ethers.utils.parseUnits('2', 18)
+
+  //     await oracle.addPriceOracle(token.address, tokenFeed.address),
+
+  //     expect(await oracle.availableCollateral(bob.address)).to.be.equal(0)
+
+  //     await token.mint(bob.address, amount)
+  //     await token.connect(bob).approve(cPool.address, amount)
+
+  //     expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+
+  //     // Feed is 13.0
+  //     expect(await oracle.availableCollateral(bob.address)).to.be.equal(amount.mul(13))
+  //   })
+  // })
+
+  describe('availableCollateralForAsset', async function () {
+    it('Should return right amount for wallet (and same token)', async function () {
       const { bob, oracle, cPool, token, tokenFeed } = await loadFixture(deploy)
       const amount = ethers.utils.parseUnits('2', 18)
 
       await oracle.addPriceOracle(token.address, tokenFeed.address),
 
-      expect(await oracle.availableCollateral(bob.address)).to.be.equal(0)
+      expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(0)
 
       await token.mint(bob.address, amount)
       await token.connect(bob).approve(cPool.address, amount)
 
       expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
-      // Feed is 13.0
-      expect(await oracle.availableCollateral(bob.address)).to.be.equal(amount.mul(13))
+      // Feed is 13.0 in both cases so 1:1
+      expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(amount)
     })
-  })
 
-  describe('availableLiquidity', async function () {
-    it('Should return right amount for wallet', async function () {
-      const { alice, oracle, lPool, token, tokenFeed } = await loadFixture(deploy)
+    it('Should return right amount for wallet with different tokens', async function () {
+      const { bob, oracle, cPool, token, tokenFeed, Token, TokenFeed } = await loadFixture(deploy)
       const amount = ethers.utils.parseUnits('2', 18)
 
+      const newToken = await Token.deploy('n', 'n')
+      const newFeed  = await TokenFeed.deploy(0.3e8) // 30c per token
+
       await oracle.addPriceOracle(token.address, tokenFeed.address),
+      await oracle.addPriceOracle(newToken.address, newFeed.address),
 
-      expect(await oracle.availableLiquidity()).to.be.equal(0)
+      // No deposits
+      expect(await oracle.availableCollateralForAsset(bob.address, newToken.address)).to.be.equal(0)
 
-      await token.mint(alice.address, amount)
-      await token.connect(alice).approve(lPool.address, amount)
+      await token.mint(bob.address, amount)
+      await token.connect(bob).approve(cPool.address, amount)
 
-      expect(await lPool.connect(alice)['deposit(uint256)'](amount)).to.emit(lPool, 'Deposit')
+      expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
-      // Feed is 13.0
-      expect(await oracle.availableLiquidity()).to.be.equal(amount.mul(13))
+      // Feed is 13.0 in both cases so 1:1
+      expect(await oracle.availableCollateralForAsset(bob.address, newToken.address)).to.be.equal(
+        amount.mul(13e18 + '').div(0.3e18 + '')
+      ).to.be.equal(86666666666666666666n) // just to be sure =D
     })
   })
+
+  // describe('availableLiquidity', async function () {
+  //   it('Should return right amount for wallet', async function () {
+  //     const { alice, oracle, lPool, token, tokenFeed } = await loadFixture(deploy)
+  //     const amount = ethers.utils.parseUnits('2', 18)
+
+  //     await oracle.addPriceOracle(token.address, tokenFeed.address),
+
+  //     expect(await oracle.availableLiquidity()).to.be.equal(0)
+
+  //     await token.mint(alice.address, amount)
+  //     await token.connect(alice).approve(lPool.address, amount)
+
+  //     expect(await lPool.connect(alice)['deposit(uint256)'](amount)).to.emit(lPool, 'Deposit')
+
+  //     // Feed is 13.0
+  //     expect(await oracle.availableLiquidity()).to.be.equal(amount.mul(13))
+  //   })
+  // })
 })

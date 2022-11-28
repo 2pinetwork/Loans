@@ -10,12 +10,14 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {DToken} from "./DToken.sol";
 import {LToken} from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
+import {Oracle} from "./Oracle.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     LToken public immutable lToken;
     DToken public immutable dToken;
+    Oracle public oracle;
 
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
@@ -34,10 +36,14 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         dToken = new DToken(asset);
     }
 
+    error ZeroAddress();
+    error SameValue();
+    error InvalidOracle();
+    error InsufficientFunds();
     error NoDebt();
     error ZeroShares();
     error ZeroAmount();
-    error WithoutLiquidity();
+    error InsufficientLiquidity();
     error GreaterThan(string _constant);
     error AlreadyInitialized();
 
@@ -46,6 +52,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Borrow(address _sender, uint _amount);
     event Repay(address _sender, uint _amount);
     event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
+    event NewOracle(address _oldOracle, address _newOracle);
 
     /*********** COMMON FUNCTIONS ***********/
 
@@ -60,6 +67,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit NewInterestInterestRate(interestRate, _newInterestRate);
 
         interestRate = _newInterestRate;
+    }
+
+    function setOracle(address _oracle) external onlyAdmin {
+        if (_oracle == address(0)) revert ZeroAddress();
+        if (_oracle == address(oracle)) revert SameValue();
+        // if (Oracle(_oracle).priceFeeds(address(asset)) == address(0)) revert InvalidOracle();
+
+        emit NewOracle(address(oracle), _oracle);
+
+        oracle = Oracle(_oracle);
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -144,7 +161,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function borrow(uint _amount) external nonReentrant {
         if (_amount <= 0) revert ZeroAmount();
-        if (_amount > balance()) revert WithoutLiquidity();
+        if (_amount > balance()) revert InsufficientLiquidity();
+        _checkBorrowAmount(_amount);
 
         address _account = msg.sender;
 
@@ -218,5 +236,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _calculateInterestRatio(address _account) internal view returns (uint) {
         return interestRate * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR;
+    }
+
+    function _checkBorrowAmount(uint _amount) internal view {
+        uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
+
+        if (_amount > _available) revert InsufficientFunds();
     }
 }
