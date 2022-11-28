@@ -182,7 +182,7 @@ describe('Liquidity Pool', async function () {
       )
     })
 
-    it('Should be reverted without collateral', async function () {
+    it('Should be reverted without collateral', async () => {
       const {
         bob,
         cPool,
