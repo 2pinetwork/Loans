@@ -43,7 +43,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     error NoDebt();
     error ZeroShares();
     error ZeroAmount();
-    error WithoutLiquidity();
+    error InsufficientLiquidity();
     error GreaterThan(string _constant);
     error AlreadyInitialized();
 
@@ -161,7 +161,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function borrow(uint _amount) external nonReentrant {
         if (_amount <= 0) revert ZeroAmount();
-        if (_amount > balance()) revert WithoutLiquidity();
+        if (_amount > balance()) revert InsufficientLiquidity();
         _checkBorrowAmount(_amount);
 
         address _account = msg.sender;

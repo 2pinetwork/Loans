@@ -172,13 +172,13 @@ describe('Liquidity Pool', async function () {
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
       await expect(lPool.connect(bob).borrow(1)).to.be.revertedWithCustomError(
-        lPool, 'WithoutLiquidity'
+        lPool, 'InsufficientLiquidity'
       )
 
       await token.mint(lPool.address, 100)
 
       await expect(lPool.connect(bob).borrow(101)).to.be.revertedWithCustomError(
-        lPool, 'WithoutLiquidity'
+        lPool, 'InsufficientLiquidity'
       )
     })
 
