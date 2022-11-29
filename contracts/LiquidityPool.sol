@@ -16,7 +16,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     LToken public immutable lToken;
+    // Debt itself
     DToken public immutable dToken;
+    // Interest token
+    DToken public immutable iToken;
     Oracle public oracle;
 
     uint public constant PRECISION = 1e18;
@@ -29,15 +32,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
 
-    // Fees
-    uint public constant MAX_FEE = 0.1e18; // Max fee 10% JIC
-    uint public protocolFee;
-
     constructor(IERC20Metadata _asset) {
         asset = _asset;
 
+        // Liquidity token
         lToken = new LToken(asset);
+        // Debt token
         dToken = new DToken(asset);
+        // Interest token
+        iToken = new DToken(asset);
     }
 
     error ZeroAddress();
@@ -57,10 +60,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Repay(address _sender, uint _amount);
     event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
     event NewOracle(address _oldOracle, address _newOracle);
-    event NewProtocolFee(uint _oldFee, uint _newFee);
 
     /*********** COMMON FUNCTIONS ***********/
-
     function decimals() public view returns (uint8) {
         return asset.decimals();
     }
@@ -82,15 +83,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit NewOracle(address(oracle), _oracle);
 
         oracle = Oracle(_oracle);
-    }
-
-    function setProtocolFee(uint _fee) external onlyAdmin {
-        if (_fee == protocolFee) revert SameValue();
-        if (_fee > MAX_INTEREST_RATE) revert GreaterThan("MAX_INTEREST_RATE");
-
-        emit NewProtocolFee(protocolFee, _fee);
-
-        protocolFee = _fee;
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -183,9 +175,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         asset.safeTransfer(_account, _amount);
 
         // New amount + interest tokens to be minted since the last interaction
-        uint _amountToMint = _amount + _debtTokenDiff(_account);
-
-        dToken.mint(_account, _amountToMint);
+        dToken.mint(_account, _amount);
+        iToken.mint(_account, _debtTokenDiff(_account));
 
         _timestamps[_account] = uint40(block.timestamp);
 
@@ -196,26 +187,37 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         if (_amount <= 0) revert ZeroAmount();
         if (_timestamps[msg.sender] == 0) revert NoDebt();
 
-        uint _totalDebt = _debt(msg.sender);
-        // Get tokens from last interaction
-        uint _debtTokens = dToken.balanceOf(msg.sender);
+        (
+            uint _dTokens,
+            uint _iTokens,
+            uint _diff,
+            uint _totalDebt
+        ) = _debt(msg.sender);
 
         if (_amount >= _totalDebt) {
             // All debt is repaid
             _amount = _totalDebt;
             _timestamps[msg.sender] = 0;
 
-            // Burn `_debtTokens` instead of _amount because of the
-            // not-persisted-interests since last interaction
-            dToken.burn(msg.sender, _debtTokens);
+            // Burn debt & interests
+            dToken.burn(msg.sender, _dTokens);
+            iToken.burn(msg.sender, _iTokens);
         } else {
-            uint _remaining = _totalDebt - _amount;
-
-            // Mint "diff" since last lnteraction
-            if (_remaining > _debtTokens) dToken.mint(msg.sender, _remaining - _debtTokens);
-
-            // Burn "diff" since last lnteraction
-            if (_remaining < _debtTokens) dToken.burn(msg.sender, _debtTokens - _remaining);
+            if (_amount < _diff) {
+                // Pay part of the not-minted amount since last interaction
+                // and mint the other part.
+                iToken.mint(msg.sender, _diff - _amount);
+            } else {
+                if (_amount <= (_diff + _iTokens)) {
+                    // Pay part of the interest amount
+                    iToken.burn(msg.sender, _diff + _iTokens - _amount);
+                } else {
+                    // Pay all the interests
+                    iToken.burn(msg.sender, _iTokens);
+                    // Pay partially the debt
+                    dToken.burn(msg.sender, _amount - _diff - _iTokens);
+                }
+            }
 
             // Update last user interaction
             _timestamps[msg.sender] = uint40(block.timestamp);
@@ -223,24 +225,31 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         asset.safeTransferFrom(msg.sender, address(this), _amount);
 
-        _chargeFees(msg.sender, _amount);
-
         emit Repay(msg.sender, _amount);
     }
 
     function debt(address _account) external view returns (uint) {
-        return _debt(_account);
+        (,,, uint _amount) = _debt(_account);
+
+        return _amount;
     }
 
     function debt() external view returns (uint) {
-        return _debt(msg.sender);
+        (,,, uint _amount) = _debt(msg.sender);
+
+        return _amount;
     }
 
-    function _debt(address _account) internal view returns (uint) {
-        uint _bal = dToken.balanceOf(_account);
-        if (_bal <= 0) return 0;
+    function _debt(address _account) internal view returns (uint, uint, uint, uint) {
+        uint _dBal = dToken.balanceOf(_account);
+        uint _iBal = iToken.balanceOf(_account);
 
-        return _bal + (_bal * _calculateInterestRatio(_account) / PRECISION);
+        if (_dBal <= 0 && _iBal <= 0) return (0, 0, 0, 0);
+
+        uint _notMintedInterest = _debtTokenDiff(_account);
+
+        // Interest is only calculated over the original borrow amount
+        return (_dBal, _iBal, _notMintedInterest, _dBal + _iBal + _notMintedInterest);
     }
 
     function _debtTokenDiff(address _account) internal view returns (uint) {
@@ -258,9 +267,5 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
 
         if (_amount > _available) revert InsufficientFunds();
-    }
-
-    function _chargeFees(address _account, uint _amount) internal {
-
     }
 }
