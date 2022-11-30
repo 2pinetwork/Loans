@@ -184,7 +184,7 @@ describe('Liquidity Pool', async function () {
       )
     })
 
-    it('Should be reverted without collateral', async () => {
+    it('Should be reverted without collateral', async function () {
       const {
         bob,
         cPool,
@@ -260,7 +260,7 @@ describe('Liquidity Pool', async function () {
       await expect(lPool.connect(bob).repay(0)).to.be.revertedWithCustomError(lPool, 'ZeroAmount')
     })
 
-    describe('Repay >= debt', async () => {
+    describe('Repay >= debt', async function () {
       it('Should work for repay == debt', async function () {
         const fixtures = await loadFixture(deploy)
 
@@ -358,7 +358,7 @@ describe('Liquidity Pool', async function () {
       })
     })
 
-    describe('Repay < Debt', async () => {
+    describe('Repay < Debt', async function () {
       it('Should work repay == not-minted-interest', async function () {
         const fixtures = await loadFixture(deploy)
 
