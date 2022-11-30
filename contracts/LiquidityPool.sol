@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -175,8 +175,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         asset.safeTransfer(_account, _amount);
 
         // New amount + interest tokens to be minted since the last interaction
-        dToken.mint(_account, _amount);
+        // iToken mint should be first to prevent "new dToken mint" to get in
+        // the debt calc
         iToken.mint(_account, _debtTokenDiff(_account));
+        dToken.mint(_account, _amount);
 
         _timestamps[_account] = uint40(block.timestamp);
 
@@ -194,28 +196,42 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             uint _totalDebt
         ) = _debt(msg.sender);
 
+        // tmp var used to keep track what amount is left to use as payment
+        // or what is debt to be minted.
+        uint _rest = _amount;
+
         if (_amount >= _totalDebt) {
             // All debt is repaid
             _amount = _totalDebt;
             _timestamps[msg.sender] = 0;
+            _rest = 0;
 
             // Burn debt & interests
             dToken.burn(msg.sender, _dTokens);
-            iToken.burn(msg.sender, _iTokens);
+            if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
         } else {
-            if (_amount < _diff) {
+            if (_amount <= _diff) {
+                _rest = _diff - _amount;
+
                 // Pay part of the not-minted amount since last interaction
                 // and mint the other part.
-                iToken.mint(msg.sender, _diff - _amount);
+                if (_rest > 0) iToken.mint(msg.sender, _rest);
             } else {
-                if (_amount <= (_diff + _iTokens)) {
+                _rest -= _diff;
+
+                if (_rest <= _iTokens) {
                     // Pay part of the interest amount
-                    iToken.burn(msg.sender, _diff + _iTokens - _amount);
+                    iToken.burn(msg.sender, _rest);
+
+                    _rest = 0;
                 } else {
                     // Pay all the interests
-                    iToken.burn(msg.sender, _iTokens);
+                    if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
+
+                    _rest -= _iTokens;
+
                     // Pay partially the debt
-                    dToken.burn(msg.sender, _amount - _diff - _iTokens);
+                    dToken.burn(msg.sender, _rest);
                 }
             }
 
