@@ -197,7 +197,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         ) = _debt(msg.sender);
 
         // tmp var used to keep track what amount is left to use as payment
-        // or what is debt to be minted.
         uint _rest = _amount;
 
         if (_amount >= _totalDebt) {
@@ -211,11 +210,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
         } else {
             if (_amount <= _diff) {
-                _rest = _diff - _amount;
+                _rest = 0;
 
                 // Pay part of the not-minted amount since last interaction
                 // and mint the other part.
-                if (_rest > 0) iToken.mint(msg.sender, _rest);
+                if (_diff - _amount > 0) iToken.mint(msg.sender, _diff - _amount);
             } else {
                 _rest -= _diff;
 
