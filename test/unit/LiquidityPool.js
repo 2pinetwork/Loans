@@ -290,9 +290,9 @@ describe('Liquidity Pool', async function () {
         expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
         expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
-        const seconds = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const seconds     = (await hre.ethers.provider.getBlock()).timestamp - ts
         const repayAmount = depositAmount.add(getInterest(depositAmount, seconds))
 
         // Full repay without iTokens minted or burned
@@ -338,9 +338,9 @@ describe('Liquidity Pool', async function () {
         expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
         expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
-        const seconds = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const seconds     = (await hre.ethers.provider.getBlock()).timestamp - ts
         const repayAmount = depositAmount.add(getInterest(depositAmount, seconds))
 
         // Extra repay without iTokens minted or burned
@@ -375,7 +375,7 @@ describe('Liquidity Pool', async function () {
         // Add liquidity & Repayment
         await token.mint(lPool.address, 10e18 + '')
         await token.mint(bob.address, 10e18 + '')
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
@@ -427,7 +427,7 @@ describe('Liquidity Pool', async function () {
         // Add liquidity & Repayment
         await token.mint(lPool.address, 10e18 + '')
         await token.mint(bob.address, 10e18 + '')
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
@@ -501,7 +501,7 @@ describe('Liquidity Pool', async function () {
         // Add liquidity & Repayment
         await token.mint(lPool.address, 10e18 + '')
         await token.mint(bob.address, 10e18 + '')
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
@@ -580,7 +580,7 @@ describe('Liquidity Pool', async function () {
         // Add liquidity & Repayment
         await token.mint(lPool.address, 10e18 + '')
         await token.mint(bob.address, 10e18 + '')
-        await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
