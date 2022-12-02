@@ -57,6 +57,9 @@ const setupCollateral = async function (fixtures) {
 
   await expect(cPool.connect(bob)['deposit(uint256)'](depositAmount)).to.emit(cPool, 'Deposit')
 
+  // let's use 1:1 collateral-borrow
+  await expect(cPool.setCollateralRatio(1.0e18 + '')).to.emit(cPool, 'NewCollateralRatio')
+
   expect(await token.balanceOf(bob.address)).to.be.equal(0)
 }
 
@@ -94,7 +97,9 @@ describe('Liquidity Pool', async function () {
       tokenFeed,
       DToken,
       LToken,
+      CPool,
       LPool,
+      TokenFeed,
     }
   }
 
@@ -243,6 +248,73 @@ describe('Liquidity Pool', async function () {
         expectedDebt.mul(999).div(1000),
         expectedDebt.mul(1001).div(1000)
       )
+    })
+
+    it('Should work for multiple collaterals with different prices', async function () {
+      // This test should test the entire flow from collateral with different tokens and
+      // different prices, and then borrow with different token and different price
+      const fixtures      = await loadFixture(deploy)
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      const {
+        bob,
+        cPool,
+        globalC,
+        lPool,
+        oracle,
+        token,
+        tokenFeed,
+        CPool,
+        TokenFeed
+      } = fixtures
+
+      // deploy 2 different tokens with Token factory
+      const token2     = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
+      const token3     = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t3', 't3')
+      const cPool2     = await CPool.deploy(token2.address)
+      const cPool3     = await CPool.deploy(token3.address)
+      const tokenFeed2 = await TokenFeed.deploy(0.2e8)
+      const tokenFeed3 = await TokenFeed.deploy(1.0e8)
+
+      await Promise.all([
+        cPool2.setCollateralRatio(ethers.utils.parseUnits('0.5', 18)),
+        cPool3.setCollateralRatio(ethers.utils.parseUnits('0.3', 18)),
+        globalC.addCollateralPool(cPool.address),
+        globalC.addCollateralPool(cPool2.address),
+        globalC.addCollateralPool(cPool3.address),
+        oracle.addPriceOracle(token.address, tokenFeed.address),
+        oracle.addPriceOracle(token2.address, tokenFeed2.address),
+        oracle.addPriceOracle(token3.address, tokenFeed3.address),
+        token.mint(lPool.address, depositAmount),
+        token2.mint(bob.address, depositAmount),
+        token3.mint(bob.address, depositAmount),
+        token2.connect(bob).approve(cPool2.address, depositAmount),
+        token3.connect(bob).approve(cPool3.address, depositAmount),
+      ])
+
+      await Promise.all([
+        cPool2.connect(bob)['deposit(uint256)'](depositAmount),
+        cPool3.connect(bob)['deposit(uint256)'](depositAmount),
+      ])
+
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      // Should have 0.61e18 of collateral in token1
+      // Div(2) == 0.5 collateralRatio // div(5) == 0.2 tokenFeed
+      // mul(3).div(10) == 0.3 collateralRatio // 1.0 tokenFeed
+      const expectedAvailable = (depositAmount.div(2).div(5).div(13)).add(
+        depositAmount.mul(3e18 + '').div(10e18 + '').div(13)
+      )
+
+      expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(
+        expectedAvailable
+      )
+
+      await expect(lPool.connect(bob).borrow(expectedAvailable.add(1))).to.be.revertedWithCustomError(
+        lPool, 'InsufficientFunds'
+      )
+
+      await expect(lPool.connect(bob).borrow(expectedAvailable)).to.emit(lPool, 'Borrow').withArgs(bob.address, expectedAvailable)
     })
   })
 

@@ -6,12 +6,18 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import  "./PiAdmin.sol";
 import {CToken} from "./CToken.sol";
 
-contract CollateralPool is Pausable, ReentrancyGuard {
+contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     CToken public immutable cToken;
+
+    // The percentage of collateral from this pool that can be used as
+    // collateral for loans. 100% = 1e18
+    uint public collateralRatio;
+    uint public constant MAX_COLLATERAL_RATIO = 1e18;
 
     constructor(IERC20Metadata _asset) {
         asset = _asset;
@@ -20,9 +26,21 @@ contract CollateralPool is Pausable, ReentrancyGuard {
     }
 
     error ZeroShares();
+    error SameRatio();
+    error MaxRatio();
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
+    event NewCollateralRatio(uint _oldRatio, uint _newRatio);
+
+    function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
+        if (_collateralRatio == collateralRatio) revert SameRatio();
+        if (_collateralRatio > MAX_COLLATERAL_RATIO) revert MaxRatio();
+
+        emit NewCollateralRatio(_collateralRatio, collateralRatio);
+
+        collateralRatio = _collateralRatio;
+    }
 
     function decimals() public view returns (uint8) {
         return asset.decimals();
@@ -107,5 +125,9 @@ contract CollateralPool is Pausable, ReentrancyGuard {
 
     function balance() public view returns (uint256) {
         return asset.balanceOf(address(this));
+    }
+
+    function availableCollateral(address _account) public view returns (uint) {
+        return balanceOf(_account) * getPricePerFullShare() * collateralRatio / MAX_COLLATERAL_RATIO / (10 ** decimals());
     }
 }
