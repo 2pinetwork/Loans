@@ -4,7 +4,6 @@ pragma solidity ^0.8.17;
 import "./PiAdmin.sol";
 import "../interfaces/IGlobal.sol";
 
-
 interface IPool {
     function asset() external view returns (address);
     function decimals() external view returns (uint8);
@@ -27,7 +26,7 @@ contract Oracle is PiAdmin {
     uint public constant MAX_TOLERATION = 24 hours;
     uint public constant BASE_PRECISION = 1e18;
 
-    IGlobal public immutable global;
+    IGlobal public immutable piGlobal;
 
     error InvalidFeed(address);
     error MaxToleration();
@@ -41,7 +40,7 @@ contract Oracle is PiAdmin {
         _global.collateralPools();
         _global.liquidityPools();
 
-        global = _global;
+        piGlobal = _global;
     }
 
     event NewToleration(uint _old, uint _new);
@@ -70,34 +69,9 @@ contract Oracle is PiAdmin {
         emit NewPriceFeed(_token, address(_feed));
     }
 
-    // function availableCollateral(address _account) external view returns (uint _available) {
-    //     address[] memory _pools = global.collateralPools();
-
-    //     for (uint i = 0; i < _pools.length; i++) {
-    //         IPool _pool = IPool(_pools[i]);
-    //         uint _price = _normalizedPrice(_pool.asset());
-    //         uint _poolPrecision = 10 ** _pool.decimals();
-    //         uint _offset = BASE_PRECISION / _poolPrecision;
-
-    //         uint _bal = (
-    //             // shares balance
-    //             _pool.balanceOf(_account) *
-    //             // Keep everything with 18 decimals at price level
-    //             _offset *
-    //             // Price per share
-    //             _pool.getPricePerFullShare() /
-    //             // Share precision
-    //             _poolPrecision
-    //         );
-
-    //         // Price is on 1e18 precision
-    //         _available += (_bal * _price / BASE_PRECISION);
-    //     }
-    // }
-
     function availableCollateralForAsset(address _account, address _asset) external view returns (uint _available) {
 
-        address[] memory _pools = global.collateralPools();
+        address[] memory _pools = piGlobal.collateralPools();
 
         uint _assetPrice = _normalizedPrice(_asset);
 
@@ -126,22 +100,6 @@ contract Oracle is PiAdmin {
             _available += (_bal * _price / _assetPrice);
         }
     }
-
-    // function availableLiquidity() external view returns (uint _available) {
-    //     address[] memory _pools = global.liquidityPools();
-
-    //     for (uint i = 0; i < _pools.length; i++) {
-    //         IPool _pool = IPool(_pools[i]);
-    //         uint _price = _normalizedPrice(_pool.asset());
-
-    //         // Keep everything with 18 decimals at price level
-    //         uint _offset = BASE_PRECISION / (10 ** _pool.decimals());
-    //         uint _bal =  _pool.balance() * _offset;
-
-    //         // Price is on 1e18 precision
-    //         _available += (_bal * _price / BASE_PRECISION);
-    //     }
-    // }
 
     function _normalizedPrice(address _asset) internal view returns (uint) {
         (

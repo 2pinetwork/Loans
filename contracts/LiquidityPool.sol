@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {DToken} from "./DToken.sol";
-import {LToken} from "./LToken.sol";
+import {DToken}  from "./DToken.sol";
+import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
-import {Oracle} from "./Oracle.sol";
+import {Oracle}  from "./Oracle.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     LToken public immutable lToken;
+    // Debt itself
     DToken public immutable dToken;
+    // Interest token
+    DToken public immutable iToken;
     Oracle public oracle;
 
     uint public constant PRECISION = 1e18;
@@ -32,8 +35,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     constructor(IERC20Metadata _asset) {
         asset = _asset;
 
+        // Liquidity token
         lToken = new LToken(asset);
+        // Debt token
         dToken = new DToken(asset);
+        // Interest token
+        iToken = new DToken(asset);
     }
 
     error ZeroAddress();
@@ -55,7 +62,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event NewOracle(address _oldOracle, address _newOracle);
 
     /*********** COMMON FUNCTIONS ***********/
-
     function decimals() public view returns (uint8) {
         return asset.decimals();
     }
@@ -169,9 +175,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         asset.safeTransfer(_account, _amount);
 
         // New amount + interest tokens to be minted since the last interaction
-        uint _amountToMint = _amount + _debtTokenDiff(_account);
-
-        dToken.mint(_account, _amountToMint);
+        // iToken mint should be first to prevent "new dToken mint" to get in
+        // the debt calc
+        iToken.mint(_account, _debtTokenDiff(_account));
+        dToken.mint(_account, _amount);
 
         _timestamps[_account] = uint40(block.timestamp);
 
@@ -182,26 +189,50 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         if (_amount <= 0) revert ZeroAmount();
         if (_timestamps[msg.sender] == 0) revert NoDebt();
 
-        uint _totalDebt = _debt(msg.sender);
-        // Get tokens from last interaction
-        uint _debtTokens = dToken.balanceOf(msg.sender);
+        (
+            uint _dTokens,
+            uint _iTokens,
+            uint _diff,
+            uint _totalDebt
+        ) = _debt(msg.sender);
+
+        // tmp var used to keep track what amount is left to use as payment
+        uint _rest = _amount;
 
         if (_amount >= _totalDebt) {
             // All debt is repaid
             _amount = _totalDebt;
             _timestamps[msg.sender] = 0;
+            _rest = 0;
 
-            // Burn `_debtTokens` instead of _amount because of the
-            // not-persisted-interests since last interaction
-            dToken.burn(msg.sender, _debtTokens);
+            // Burn debt & interests
+            dToken.burn(msg.sender, _dTokens);
+            if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
         } else {
-            uint _remaining = _totalDebt - _amount;
+            if (_amount <= _diff) {
+                _rest = 0;
 
-            // Mint "diff" since last lnteraction
-            if (_remaining > _debtTokens) dToken.mint(msg.sender, _remaining - _debtTokens);
+                // Pay part of the not-minted amount since last interaction
+                // and mint the other part.
+                if (_diff - _amount > 0) iToken.mint(msg.sender, _diff - _amount);
+            } else {
+                _rest -= _diff;
 
-            // Burn "diff" since last lnteraction
-            if (_remaining < _debtTokens) dToken.burn(msg.sender, _debtTokens - _remaining);
+                if (_rest <= _iTokens) {
+                    // Pay part of the interest amount
+                    iToken.burn(msg.sender, _rest);
+
+                    _rest = 0;
+                } else {
+                    // Pay all the interests
+                    if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
+
+                    _rest -= _iTokens;
+
+                    // Pay partially the debt
+                    dToken.burn(msg.sender, _rest);
+                }
+            }
 
             // Update last user interaction
             _timestamps[msg.sender] = uint40(block.timestamp);
@@ -213,18 +244,27 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function debt(address _account) external view returns (uint) {
-        return _debt(_account);
+        (,,, uint _amount) = _debt(_account);
+
+        return _amount;
     }
 
     function debt() external view returns (uint) {
-        return _debt(msg.sender);
+        (,,, uint _amount) = _debt(msg.sender);
+
+        return _amount;
     }
 
-    function _debt(address _account) internal view returns (uint) {
-        uint _bal = dToken.balanceOf(_account);
-        if (_bal <= 0) return 0;
+    function _debt(address _account) internal view returns (uint, uint, uint, uint) {
+        uint _dBal = dToken.balanceOf(_account);
+        uint _iBal = iToken.balanceOf(_account);
 
-        return _bal + (_bal * _calculateInterestRatio(_account) / PRECISION);
+        if (_dBal <= 0 && _iBal <= 0) return (0, 0, 0, 0);
+
+        uint _notMintedInterest = _debtTokenDiff(_account);
+
+        // Interest is only calculated over the original borrow amount
+        return (_dBal, _iBal, _notMintedInterest, _dBal + _iBal + _notMintedInterest);
     }
 
     function _debtTokenDiff(address _account) internal view returns (uint) {

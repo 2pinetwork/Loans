@@ -50,7 +50,7 @@ describe('Oracle', async function () {
       const oracle = await Oracle.deploy(globalC.address)
 
       expect(oracle.address).to.not.be.equal(ZERO_ADDRESS)
-      expect(await oracle.global()).to.be.equal(globalC.address)
+      expect(await oracle.piGlobal()).to.be.equal(globalC.address)
       expect(await oracle.toleration()).to.be.equal(0)
       expect(await oracle.MAX_TOLERATION()).to.be.equal(24 * 3600)
       expect(await oracle.BASE_PRECISION()).to.be.equal(1e18 + '')

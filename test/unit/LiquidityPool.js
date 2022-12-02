@@ -72,6 +72,7 @@ describe('Liquidity Pool', async function () {
     const cPool          = await CPool.deploy(token.address)
     const lToken         = await LToken.attach(await lPool.lToken())
     const dToken         = await DToken.attach(await lPool.dToken())
+    const iToken         = await DToken.attach(await lPool.iToken())
     const TokenFeed      = await ethers.getContractFactory('PriceFeedMock')
     const tokenFeed      = await TokenFeed.deploy(13e8)
 
@@ -85,6 +86,7 @@ describe('Liquidity Pool', async function () {
       cPool,
       dToken,
       globalC,
+      iToken,
       lPool,
       lToken,
       oracle,
@@ -208,9 +210,10 @@ describe('Liquidity Pool', async function () {
     })
 
     it('Should work', async function () {
-      const fixtures              = await loadFixture(deploy)
+      const fixtures      = await loadFixture(deploy)
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
       const { bob, lPool, token } = fixtures
-      const depositAmount         = ethers.utils.parseUnits('9.9', 18)
 
       await token.mint(lPool.address, 10e18 + '')
 
@@ -257,127 +260,392 @@ describe('Liquidity Pool', async function () {
       await expect(lPool.connect(bob).repay(0)).to.be.revertedWithCustomError(lPool, 'ZeroAmount')
     })
 
-    it('Should work for total amount', async function () {
-      const fixtures              = await loadFixture(deploy)
-      const { bob, lPool, token } = fixtures
+    describe('Repay >= debt', async function () {
+      it('Should work for repay == debt', async function () {
+        const fixtures = await loadFixture(deploy)
 
-      await setupCollateral(fixtures)
+        const {
+          bob,
+          iToken,
+          dToken,
+          lPool,
+          token
+        } = fixtures
 
-      // Add liquidity & Repayment
-      await token.mint(lPool.address, 10e18 + '')
-      await token.mint(bob.address, 10e18 + '')
+        await setupCollateral(fixtures)
 
-      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
 
-      const ts = (await hre.ethers.provider.getBlock()).timestamp
-      await lPool.connect(bob).borrow(depositAmount)
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        depositAmount
-      )
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
+        await lPool.connect(bob).borrow(depositAmount)
 
-      await token.connect(bob).approve(lPool.address, 100e18 +'')
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
 
-      const seconds = (await hre.ethers.provider.getBlock()).timestamp - ts
-      const repayAmount = depositAmount.add(getInterest(depositAmount, seconds))
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
-      await expect(lPool.connect(bob).repay(repayAmount)).to.emit(
-        lPool, 'Repay'
-      ).withArgs(bob.address, repayAmount)
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
+        const seconds     = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const repayAmount = depositAmount.add(getInterest(depositAmount, seconds))
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
+        // Full repay without iTokens minted or burned
+        await expect(lPool.connect(bob).repay(repayAmount)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(
+          bob.address, repayAmount
+        ).to.emit(
+          dToken, 'Transfer' // TMP: Will change for Burn event
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, depositAmount
+        ).to.not.emit(iToken, 'Transfer') // TMP: Will change for Burn event
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
+      })
+
+      it('Should work for repay > debt', async function () {
+        const fixtures = await loadFixture(deploy)
+
+        const {
+          bob,
+          iToken,
+          dToken,
+          lPool,
+          token
+        } = fixtures
+
+        await setupCollateral(fixtures)
+
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
+
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
+        await lPool.connect(bob).borrow(depositAmount)
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
+
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
+
+        const seconds     = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const repayAmount = depositAmount.add(getInterest(depositAmount, seconds))
+
+        // Extra repay without iTokens minted or burned
+        await expect(lPool.connect(bob).repay(repayAmount.add(100))).to.emit(
+          lPool, 'Repay'
+        ).withArgs(
+          bob.address, repayAmount
+        ).to.emit(
+          dToken, 'Transfer' // TMP: Will change for Burn event
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, depositAmount
+        ).to.not.emit(iToken, 'Transfer') // TMP: Will change for Burn event
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
+      })
     })
 
-    it('Should work for partial interest amount (+mint debt tokens)', async function () {
-      const fixtures                      = await loadFixture(deploy)
-      const { bob, dToken, lPool, token } = fixtures
+    describe('Repay < Debt', async function () {
+      it('Should work repay == not-minted-interest', async function () {
+        const fixtures = await loadFixture(deploy)
 
-      await setupCollateral(fixtures)
+        const {
+          bob,
+          dToken,
+          iToken,
+          lPool,
+          token
+        } = fixtures
 
-      // Add liquidity & Repayment
-      await token.mint(lPool.address, 10e18 + '')
-      await token.mint(bob.address, 10e18 + '')
-      await token.connect(bob).approve(lPool.address, 100e18 +'')
+        await setupCollateral(fixtures)
 
-      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
-      const ts = (await hre.ethers.provider.getBlock()).timestamp
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
-      await lPool.connect(bob).borrow(depositAmount)
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        depositAmount
-      )
+        await lPool.connect(bob).borrow(depositAmount)
 
-      await mine(100, 1)
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
 
-      const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
-      const interest = getInterest(depositAmount, seconds)
+        await mine(100, 1)
 
-      expect(interest).to.not.be.equal(depositAmount)
+        const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const interest = getInterest(depositAmount, seconds)
 
-      // Interest are calculated and minted/burned with each interaction
-      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(interest).to.be.below(depositAmount)
 
-      const repayment = interest.div(2)
+        // Interest are calculated and minted/burned with each interaction
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
-      // Check repay event + mint "half of interest"
-      await expect(lPool.connect(bob).repay(repayment)).to.emit(
-        lPool, 'Repay'
-      ).withArgs(bob.address, repayment).to.emit(
-        dToken, 'Transfer' // TMP: will change for Mint
-      ).withArgs(ZERO_ADDRESS, bob.address, interest.sub(repayment))
+        // Check repay event and "drop" the acumulated interest with no-mint tokens
+        await expect(lPool.connect(bob).repay(interest)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, interest).to.not.emit(
+          iToken, 'Transfer'// TMP: will change for Mint
+        ).to.not.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        )
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        depositAmount.add(interest.sub(repayment))
-      )
-    })
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
+      })
 
-    it('Should work for partial interest amount (+burn debt tokens)', async function () {
-      const fixtures                      = await loadFixture(deploy)
-      const { bob, dToken, lPool, token } = fixtures
+      it('Should work repay != not-minted-interest', async function () {
+        const fixtures = await loadFixture(deploy)
+        const {
+          bob,
+          dToken,
+          iToken,
+          lPool,
+          token
+        } = fixtures
 
-      await setupCollateral(fixtures)
+        await setupCollateral(fixtures)
 
-      // Add liquidity & Repayment
-      await token.mint(lPool.address, 10e18 + '')
-      await token.mint(bob.address, 10e18 + '')
-      await token.connect(bob).approve(lPool.address, 100e18 +'')
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
 
-      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
-      const ts = (await hre.ethers.provider.getBlock()).timestamp
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
 
-      await lPool.connect(bob).borrow(depositAmount)
+        await lPool.connect(bob).borrow(depositAmount)
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        depositAmount
-      )
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
 
-      await mine(100, 1)
+        await mine(100, 1)
 
-      const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
-      const interest = getInterest(depositAmount, seconds)
+        const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const interest = getInterest(depositAmount, seconds)
 
-      expect(interest).to.not.be.equal(depositAmount)
+        expect(interest).to.not.be.equal(depositAmount)
 
-      // Interest are calculated and minted/burned with each interaction
-      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        // Interest are calculated and minted/burned with each interaction
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
-      // Should only burn 2 tokens
-      const repayment = interest.add(2)
+        let   repayment    = interest.div(2)
+        const interestRest = interest.sub(repayment)
 
-      // Check repay event + mint "half of interest"
-      await expect(lPool.connect(bob).repay(repayment)).to.emit(
-        lPool, 'Repay'
-      ).withArgs(bob.address, repayment).to.emit(
-        dToken, 'Transfer' // TMP: will change for Burn
-      ).withArgs(bob.address, ZERO_ADDRESS, 2)
+        // Repay < _diff
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer'// TMP: will change for Mint
+        ).withArgs(
+          ZERO_ADDRESS, bob.address, interestRest
+        ).to.not.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        )
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        depositAmount.sub(2)
-      )
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount.add(interestRest)
+        )
+
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(interestRest)
+
+        // 1 block for diff
+        repayment = interestRest.div(2).add(getInterest(depositAmount, 1))
+
+        // Repay > _diff
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer'// TMP: will change for Burn
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, interestRest.div(2)
+        ).to.not.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        )
+      })
+
+      it('Should work repay == not-minted-interest + iTokens (iToken.burn)', async function () {
+        const fixtures = await loadFixture(deploy)
+        const {
+          bob,
+          dToken,
+          iToken,
+          lPool,
+          token
+        } = fixtures
+
+        await setupCollateral(fixtures)
+
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
+
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
+
+        await lPool.connect(bob).borrow(depositAmount)
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
+
+        await mine(100, 1)
+
+        const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const interest = getInterest(depositAmount, seconds)
+
+        expect(interest).to.not.be.equal(depositAmount)
+
+        // Interest are calculated and minted/burned with each interaction
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
+        let   repayment    = interest.div(2)
+        const interestRest = interest.sub(repayment)
+
+        // Repay < _diff
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer'// TMP: will change for Mint
+        ).withArgs(
+          ZERO_ADDRESS, bob.address, interestRest
+        ).to.not.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        )
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount.add(interest.sub(repayment))
+        )
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(interestRest)
+
+        repayment = interestRest.add(getInterest(depositAmount, 1))
+
+        // Repay == _diff + iTokens
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay', 'RepayEvent'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer', 'iToken.MintEvent' // TMP: will change for Mint
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, interestRest
+        ).to.not.emit(
+          dToken, 'Transfer', 'dToken.BurnEvent' // TMP: will change for Mint
+        )
+
+        // All iTokens burned
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+      })
+
+      it('Should work repay > not-minted-interest + iTokens (dToken.burn)', async function () {
+        const fixtures = await loadFixture(deploy)
+        const {
+          bob,
+          dToken,
+          iToken,
+          lPool,
+          token
+        } = fixtures
+
+        await setupCollateral(fixtures)
+
+        // Add liquidity & Repayment
+        await token.mint(lPool.address, 10e18 + '')
+        await token.mint(bob.address, 10e18 + '')
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
+
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+        const ts = (await hre.ethers.provider.getBlock()).timestamp
+
+        await lPool.connect(bob).borrow(depositAmount)
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount
+        )
+
+        await mine(100, 1)
+
+        const seconds  = (await hre.ethers.provider.getBlock()).timestamp - ts
+        const interest = getInterest(depositAmount, seconds)
+
+        expect(interest).to.not.be.equal(depositAmount)
+
+        // Interest are calculated and minted/burned with each interaction
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
+        let repayment    = interest.div(2)
+        let interestRest = interest.sub(repayment)
+
+        // Repay < _diff
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer'// TMP: will change for Mint
+        ).withArgs(
+          ZERO_ADDRESS, bob.address, interestRest
+        ).to.not.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        )
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount.add(interest.sub(repayment))
+        )
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(interestRest)
+
+        // Pay 5 more than all interests
+        repayment = interestRest.add(getInterest(depositAmount, 1)).add(5)
+
+        // Repay == _diff + iTokens
+        await expect(lPool.connect(bob).repay(repayment)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(bob.address, repayment).to.emit(
+          iToken, 'Transfer'// TMP: will change for Mint
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, interestRest
+        ).to.emit(
+          dToken, 'Transfer' // TMP: will change for Mint
+        ).withArgs(
+          bob.address, ZERO_ADDRESS, 5
+        )
+
+        // All iTokens burned
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+          depositAmount.sub(5)
+        )
+        expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount.sub(5))
+        expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+      })
     })
   })
 })
