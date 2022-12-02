@@ -299,9 +299,8 @@ describe('Liquidity Pool', async function () {
 
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
-      // Should have 0.61e18 of collateral in token1
-      // Div(2) == 0.5 collateralRatio // div(5) == 0.2 tokenFeed
-      // mul(3).div(10) == 0.3 collateralRatio // 1.0 tokenFeed
+      // Div(2) == 0.5 collateralRatio // div(5) == 0.2 tokenFeed // 13 token price
+      // mul(3).div(10) == 0.3 collateralRatio // 1.0 tokenFeed // 13 token price
       const expectedAvailable = (depositAmount.div(2).div(5).div(13)).add(
         depositAmount.mul(3e18 + '').div(10e18 + '').div(13)
       )
