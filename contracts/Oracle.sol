@@ -1,22 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
 import "./PiAdmin.sol";
+import "../interfaces/IChainLink.sol";
 import "../interfaces/IGlobal.sol";
-
-interface IPool {
-    function asset() external view returns (address);
-    function decimals() external view returns (uint8);
-    function getPricePerFullShare() external view returns (uint);
-    function balanceOf(address) external view returns (uint);
-    function balance() external view returns (uint);
-}
-
-interface IChainLink {
-    function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
-    function decimals() external view returns (uint8);
-    // function aggregator() external view returns (address);
-}
+import "../interfaces/IPool.sol";
 
 contract Oracle is PiAdmin {
     mapping(address => IChainLink) public priceFeeds;
@@ -70,10 +60,10 @@ contract Oracle is PiAdmin {
     }
 
     function availableCollateralForAsset(address _account, address _asset) external view returns (uint _available) {
-
         address[] memory _pools = piGlobal.collateralPools();
 
         uint _assetPrice = _normalizedPrice(_asset);
+        uint _assetDec   = IERC20Metadata(_asset).decimals();
 
         if (_assetPrice <= 0) revert InvalidFeed(_asset);
 
@@ -83,21 +73,42 @@ contract Oracle is PiAdmin {
 
             if (_price <= 0) revert InvalidFeed(_pool.asset());
 
-            uint _poolPrecision = 10 ** _pool.decimals();
-            uint _offset = BASE_PRECISION / _poolPrecision;
+            // Get current available collateral for the pool
+            uint _bal = _pool.availableCollateral(_account);
 
-            uint _bal = (
-                // shares balance
-                _pool.balanceOf(_account) *
-                // Keep everything with 18 decimals at price level
-                _offset *
-                // Price per share
-                _pool.getPricePerFullShare() /
-                // Share precision
-                _poolPrecision
-            );
+            if (_bal <= 0) continue;
 
-            _available += (_bal * _price / _assetPrice);
+            // Return balance in the _asset precision
+            _available += _fromPoolPrecision(_pool, _assetDec, _bal) * _price / _assetPrice;
+        }
+
+        if (_available <= 0) return _available;
+
+        uint _borrowed = _borrowedInAsset(_account, _asset);
+
+        (_available > _borrowed) ? (_available -= _borrowed) : (_available = 0);
+    }
+
+    function _borrowedInAsset(address _account, address _asset) internal view returns (uint _borrowed) {
+        address[] memory _pools = piGlobal.liquidityPools();
+
+        uint _assetPrice = _normalizedPrice(_asset);
+        uint _assetDec   = IERC20Metadata(_asset).decimals();
+
+        if (_assetPrice <= 0) revert InvalidFeed(_asset);
+
+        for (uint i = 0; i < _pools.length; i++) {
+            IPool _pool = IPool(_pools[i]);
+            uint _debt  = _pool.debt(_account);
+
+            if (_debt <= 0) continue;
+
+            uint _price = _normalizedPrice(_pool.asset());
+
+            if (_price <= 0) revert InvalidFeed(_pool.asset());
+
+            // Return balance in the _asset precision
+            _borrowed += _fromPoolPrecision(_pool, _assetDec, _debt) * _price / _assetPrice;
         }
     }
 
@@ -118,4 +129,12 @@ contract Oracle is PiAdmin {
 
         return uint(_roundPrice) * _offset;
     }
+
+    function _fromPoolPrecision(IPool _pool, uint _assetDec, uint _amount) internal view returns (uint) {
+        uint _poolDec = _pool.decimals();
+
+        if (_assetDec > _poolDec) return _amount * 10 ** (_assetDec - _poolDec);
+        else                      return _amount / 10 ** (_poolDec - _assetDec);
+    }
+
 }
