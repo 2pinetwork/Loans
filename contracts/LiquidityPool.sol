@@ -257,7 +257,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             _amount = _totalDebt;
             _timestamps[msg.sender] = 0;
             _rest = 0;
-            _interestToBePaid = _iTokens;
+            _interestToBePaid = _diff + _iTokens;
 
             // Burn debt & interests
             dToken.burn(msg.sender, _dTokens);
@@ -346,6 +346,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function _chargeFees(uint _interestAmount) internal {
+        // Get piFee proportion
         uint _fee = _interestAmount * piFee / (piFee + interestRate);
 
         if (_fee <= 0) return;
