@@ -156,7 +156,7 @@ describe('Liquidity Pool', async function () {
 
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
+      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
       const lPool            = await LPool.deploy(token.address, dueDate, 0)
 
       await mine(2)
@@ -346,7 +346,7 @@ describe('Liquidity Pool', async function () {
 
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
+      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
       const lPool            = await LPool.deploy(token.address, dueDate, 0)
 
       await mine(2)
