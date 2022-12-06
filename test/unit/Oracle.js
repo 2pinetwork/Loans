@@ -5,13 +5,14 @@ const { ZERO_ADDRESS } = require('./helpers').constants
 
 describe('Oracle', async function () {
   const deploy = async function () {
+    const dueDate        = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
     const [, alice, bob] = await ethers.getSigners()
     const Token          = await ethers.getContractFactory('ERC20Mintable')
     const token          = await Token.deploy('t', 't')
     const CPool          = await ethers.getContractFactory('CollateralPool')
     const LPool          = await ethers.getContractFactory('LiquidityPool')
     const cPool          = await CPool.deploy(token.address)
-    const lPool          = await LPool.deploy(token.address)
+    const lPool          = await LPool.deploy(token.address, dueDate)
     const cToken         = await (await ethers.getContractFactory('CToken')).attach(await cPool.cToken())
     const lToken         = await (await ethers.getContractFactory('LToken')).attach(await lPool.lToken())
     const globalC        = await (await ethers.getContractFactory('Global')).deploy()

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -11,14 +12,31 @@ import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
 import {Oracle}  from "./Oracle.sol";
 
+library Errors {
+    error DUE_DATE_IN_THE_PAST();
+    error ZeroAddress();
+    error SameValue();
+    error InvalidOracle();
+    error InsufficientFunds();
+    error NoDebt();
+    error ZeroShares();
+    error ZeroAmount();
+    error InsufficientLiquidity();
+    error GreaterThan(string _constant);
+    error AlreadyInitialized();
+}
+
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
+
     IERC20Metadata public immutable asset;
+    // Liquidity token
     LToken public immutable lToken;
-    // Debt itself
+    // Debt token
     DToken public immutable dToken;
-    // Interest token
+    // Debt Interest token
     DToken public immutable iToken;
+    // Oracle
     Oracle public oracle;
 
     uint public constant PRECISION = 1e18;
@@ -31,8 +49,14 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
 
-    constructor(IERC20Metadata _asset) {
+    // Due date to end the pool
+    uint public immutable dueDate;
+
+    constructor(IERC20Metadata _asset, uint _dueDate) {
+        if (_dueDate <= block.timestamp) revert Errors.DUE_DATE_IN_THE_PAST();
+
         asset = _asset;
+        dueDate = _dueDate;
 
         // Liquidity token
         lToken = new LToken(asset);
@@ -42,16 +66,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         iToken = new DToken(asset);
     }
 
-    error ZeroAddress();
-    error SameValue();
-    error InvalidOracle();
-    error InsufficientFunds();
-    error NoDebt();
-    error ZeroShares();
-    error ZeroAmount();
-    error InsufficientLiquidity();
-    error GreaterThan(string _constant);
-    error AlreadyInitialized();
+    error EXPIRED_POOL();
+
+    modifier notExpired() {
+        if (dueDate <= block.timestamp) revert EXPIRED_POOL();
+        _;
+    }
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
@@ -66,8 +86,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function setInterestInterestRate(uint _newInterestRate) external onlyAdmin {
-        if (_newInterestRate > MAX_INTEREST_RATE) revert GreaterThan("MAX_INTEREST_RATE");
-        if (dToken.totalSupply() > 0) revert AlreadyInitialized();
+        if (_newInterestRate > MAX_INTEREST_RATE) revert Errors.GreaterThan("MAX_INTEREST_RATE");
+        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
 
         emit NewInterestInterestRate(interestRate, _newInterestRate);
 
@@ -75,9 +95,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function setOracle(address _oracle) external onlyAdmin {
-        if (_oracle == address(0)) revert ZeroAddress();
-        if (_oracle == address(oracle)) revert SameValue();
-        // if (Oracle(_oracle).priceFeeds(address(asset)) == address(0)) revert InvalidOracle();
+        if (_oracle == address(0)) revert Errors.ZeroAddress();
+        if (_oracle == address(oracle)) revert Errors.SameValue();
+        // if (Oracle(_oracle).priceFeeds(address(asset)) == address(0)) revert Errors.InvalidOracle();
 
         emit NewOracle(address(oracle), _oracle);
 
@@ -89,11 +109,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return lToken.balanceOf(_account);
     }
 
-    function deposit(uint _amount, address _onBehalfOf) external nonReentrant  whenNotPaused {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant whenNotPaused notExpired {
         _deposit(_amount, _onBehalfOf);
     }
 
-    function deposit(uint _amount) external nonReentrant  whenNotPaused {
+    function deposit(uint _amount) external nonReentrant  whenNotPaused notExpired {
         _deposit(_amount, msg.sender);
     }
 
@@ -112,7 +132,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             _shares = (_amount * _supply) / _before;
         }
 
-        if (_shares <= 0) revert ZeroShares();
+        if (_shares <= 0) revert Errors.ZeroShares();
 
         lToken.mint(_onBehalfOf, _shares);
 
@@ -129,23 +149,20 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
      *   different wallet
      * @return The final amount withdrawn
      **/
-    function withdraw(
-        uint _shares,
-        address _to
-    ) external nonReentrant whenNotPaused returns (uint) {
+    function withdraw(uint _shares, address _to) external nonReentrant returns (uint) {
         return _withdraw(_shares, _to);
     }
 
-    function withdraw(uint _shares) external nonReentrant whenNotPaused returns (uint) {
+    function withdraw(uint _shares) external nonReentrant returns (uint) {
         return _withdraw(_shares, msg.sender);
     }
 
-    function withdrawAll() external nonReentrant whenNotPaused returns (uint) {
+    function withdrawAll() external nonReentrant returns (uint) {
         return _withdraw(lToken.balanceOf(msg.sender), msg.sender);
     }
 
     function _withdraw(uint _shares, address _to) internal returns (uint) {
-        if (_shares <= 0) revert ZeroShares();
+        if (_shares <= 0) revert Errors.ZeroShares();
 
         uint _amount = (balance() * _shares) / lToken.totalSupply();
 
@@ -164,9 +181,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     /*********** BORROW FUNCTIONS  *********/
 
-    function borrow(uint _amount) external nonReentrant {
-        if (_amount <= 0) revert ZeroAmount();
-        if (_amount > balance()) revert InsufficientLiquidity();
+    function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
+        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_amount > balance()) revert Errors.InsufficientLiquidity();
         _checkBorrowAmount(_amount);
 
         address _account = msg.sender;
@@ -184,9 +201,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit Borrow(_account, _amount);
     }
 
-    function repay(uint _amount) external nonReentrant {
-        if (_amount <= 0) revert ZeroAmount();
-        if (_timestamps[msg.sender] == 0) revert NoDebt();
+    function repay(uint _amount) external nonReentrant notExpired {
+        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_timestamps[msg.sender] == 0) revert Errors.NoDebt();
 
         (
             uint _dTokens,
@@ -270,16 +287,14 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _bal = dToken.balanceOf(_account);
         if (_bal <= 0) return 0;
 
-        return _bal * _calculateInterestRatio(_account) / PRECISION;
-    }
-
-    function _calculateInterestRatio(address _account) internal view returns (uint) {
-        return interestRate * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR;
+        // Interest is only calculated over the original borrow amount
+        // Use all the operations here to prevent _losing_ precision
+        return _bal * interestRate * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR / PRECISION;
     }
 
     function _checkBorrowAmount(uint _amount) internal view {
         uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
 
-        if (_amount > _available) revert InsufficientFunds();
+        if (_amount > _available) revert Errors.InsufficientFunds();
     }
 }
