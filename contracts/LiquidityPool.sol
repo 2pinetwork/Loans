@@ -52,11 +52,17 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Due date to end the pool
     uint public immutable dueDate;
 
-    constructor(IERC20Metadata _asset, uint _dueDate) {
+    // Fees
+    uint public immutable originatorFee;
+
+    constructor(IERC20Metadata _asset, uint _dueDate, uint _originatorFee) {
         if (_dueDate <= block.timestamp) revert Errors.DUE_DATE_IN_THE_PAST();
+        // Shouldn't be more than 100% of originatorFee
+        if (_originatorFee > MAX_INTEREST_RATE) revert Errors.GreaterThan("MAX_INTEREST_RATE");
 
         asset = _asset;
         dueDate = _dueDate;
+        originatorFee = _originatorFee;
 
         // Liquidity token
         lToken = new LToken(asset);
@@ -193,7 +199,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         // New amount + interest tokens to be minted since the last interaction
         // iToken mint should be first to prevent "new dToken mint" to get in
         // the debt calc
-        iToken.mint(_account, _debtTokenDiff(_account));
+        uint _interestTokens = _debtTokenDiff(_account);
+        // originatorFee is directly added to the interest to prevent the borrower
+        // receive less than expected. Instead the account will have to pay the interest for it
+        _interestTokens += _originatorFeeFor(_amount);
+
+        iToken.mint(_account, _interestTokens);
         dToken.mint(_account, _amount);
 
         _timestamps[_account] = uint40(block.timestamp);
@@ -296,5 +307,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
 
         if (_amount > _available) revert Errors.InsufficientFunds();
+    }
+
+    function _originatorFeeFor(uint _amount) internal view returns (uint) {
+        return _amount * originatorFee / PRECISION;
     }
 }

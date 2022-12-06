@@ -70,7 +70,7 @@ describe('Liquidity Pool', async function () {
     const CPool          = await ethers.getContractFactory('CollateralPool')
     const LToken         = await ethers.getContractFactory('LToken')
     const DToken         = await ethers.getContractFactory('DToken')
-    const lPool          = await LPool.deploy(token.address, dueDate)
+    const lPool          = await LPool.deploy(token.address, dueDate, 0)
     const cPool          = await CPool.deploy(token.address)
     const lToken         = await LToken.attach(await lPool.lToken())
     const dToken         = await DToken.attach(await lPool.dToken())
@@ -106,7 +106,7 @@ describe('Liquidity Pool', async function () {
     it('Should work', async function () {
       const dueDate                  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
       const { token, LPool, LToken } = await loadFixture(deploy)
-      const lPool                    = await LPool.deploy(token.address, dueDate)
+      const lPool                    = await LPool.deploy(token.address, dueDate, 0)
       const lToken                   = await LToken.attach(await lPool.lToken())
 
       expect(lPool.address).to.not.be.equal(ZERO_ADDRESS)
@@ -142,7 +142,7 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
-      const lPool            = await LPool.deploy(token.address, dueDate)
+      const lPool            = await LPool.deploy(token.address, dueDate, 0)
 
       await expect(lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
     })
@@ -226,7 +226,7 @@ describe('Liquidity Pool', async function () {
       const fixtures      = await loadFixture(deploy)
       const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
-      const { bob, lPool, token } = fixtures
+      const { bob, dToken, iToken, lPool, token } = fixtures
 
       await token.mint(lPool.address, 10e18 + '')
 
@@ -237,6 +237,9 @@ describe('Liquidity Pool', async function () {
       await expect(lPool.connect(bob).borrow(depositAmount)).to.emit(lPool, 'Borrow').withArgs(bob.address, depositAmount)
 
       expect(await token.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
       expect(await token.balanceOf(lPool.address)).to.be.equal(0.1e18 + '')
 
@@ -327,9 +330,40 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
-      const lPool            = await LPool.deploy(token.address, dueDate)
+      const lPool            = await LPool.deploy(token.address, dueDate, 0)
 
       await expect(lPool.borrow(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
+    })
+
+    it('Should work with originatorFee', async function () {
+      const fixtures     = await loadFixture(deploy)
+      const borrowAmount = ethers.utils.parseUnits('9.9', 18)
+
+      const { bob, oracle, token, DToken, LPool } = fixtures
+
+      const dueDate = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+      const lPool   = await LPool.deploy(token.address, dueDate, 0.01e18 + '')
+      const dToken  = await DToken.attach(await lPool.dToken())
+      const iToken  = await DToken.attach(await lPool.iToken())
+
+      await Promise.all([
+        lPool.setOracle(oracle.address),
+        token.mint(lPool.address, 10e18 + ''),
+        setupCollateral({...fixtures, lPool})
+      ])
+
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(lPool.connect(bob).borrow(borrowAmount)).to.emit(lPool, 'Borrow').withArgs(bob.address, borrowAmount)
+
+      const originatorFee = borrowAmount.mul(0.01e18 + '').div(1e18 + '')
+
+      // originator fee is minted as interest directly
+      expect(await token.balanceOf(bob.address)).to.be.equal(borrowAmount)
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(borrowAmount)
+      expect(await iToken.balanceOf(bob.address)).to.be.equal(originatorFee)
+
+      expect(await lPool['debt(address)'](bob.address)).to.be.equal(borrowAmount.add(originatorFee))
     })
   })
 
@@ -737,8 +771,10 @@ describe('Liquidity Pool', async function () {
 
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
-      const lPool            = await LPool.deploy(token.address, dueDate)
+      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
+      const lPool            = await LPool.deploy(token.address, dueDate, 0)
+
+      await mine(2)
 
       // doesn't matter if it has debt or not
       await expect(lPool.repay(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
