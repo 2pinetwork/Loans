@@ -41,7 +41,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
-    uint public constant MAX_RATE = 1e18; // Max interest rate 100% JIC
+    uint public constant MAX_RATE = 1e18; // Max rate 100% JIC
 
     // 1%
     uint public interestRate = 0.01e18;

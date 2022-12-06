@@ -159,6 +159,8 @@ describe('Liquidity Pool', async function () {
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
       const lPool            = await LPool.deploy(token.address, dueDate, 0)
 
+      await mine(2)
+
       await expect(lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
     })
   })
@@ -346,6 +348,8 @@ describe('Liquidity Pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 2
       const lPool            = await LPool.deploy(token.address, dueDate, 0)
+
+      await mine(2)
 
       await expect(lPool.borrow(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
     })
