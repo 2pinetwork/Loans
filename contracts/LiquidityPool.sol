@@ -41,7 +41,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
-    uint public constant MAX_INTEREST_RATE = 1e18; // Max interest rate 100% JIC
+    uint public constant MAX_RATE = 1e18; // Max interest rate 100% JIC
 
     // 1%
     uint public interestRate = 0.01e18;
@@ -54,11 +54,13 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Fees
     uint public immutable originatorFee;
+    uint public piFee;
+    address public treasury;
 
     constructor(IERC20Metadata _asset, uint _dueDate, uint _originatorFee) {
         if (_dueDate <= block.timestamp) revert Errors.DUE_DATE_IN_THE_PAST();
         // Shouldn't be more than 100% of originatorFee
-        if (_originatorFee > MAX_INTEREST_RATE) revert Errors.GreaterThan("MAX_INTEREST_RATE");
+        if (_originatorFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
 
         asset = _asset;
         dueDate = _dueDate;
@@ -70,6 +72,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         dToken = new DToken(asset);
         // Interest token
         iToken = new DToken(asset);
+
+        treasury = msg.sender;
     }
 
     error EXPIRED_POOL();
@@ -85,6 +89,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Repay(address _sender, uint _amount);
     event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
     event NewOracle(address _oldOracle, address _newOracle);
+    event NewPiFee(uint _oldFee, uint _newFee);
+    event NewTreasury(address _oldTreasury, address _newTreasury);
+    event CollectedFee(uint _fee);
 
     /*********** COMMON FUNCTIONS ***********/
     function decimals() public view returns (uint8) {
@@ -92,12 +99,21 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function setInterestInterestRate(uint _newInterestRate) external onlyAdmin {
-        if (_newInterestRate > MAX_INTEREST_RATE) revert Errors.GreaterThan("MAX_INTEREST_RATE");
+        if (_newInterestRate > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
 
         emit NewInterestInterestRate(interestRate, _newInterestRate);
 
         interestRate = _newInterestRate;
+    }
+
+    function setPiFee(uint _piFee) external onlyAdmin {
+        if (_piFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
+        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
+
+        emit NewPiFee(piFee, _piFee);
+
+        piFee = _piFee;
     }
 
     function setOracle(address _oracle) external onlyAdmin {
@@ -108,6 +124,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit NewOracle(address(oracle), _oracle);
 
         oracle = Oracle(_oracle);
+    }
+
+    function setTreasury(address _treasury) external onlyAdmin {
+        if (_treasury == address(0)) revert Errors.ZeroAddress();
+        if (_treasury == treasury) revert Errors.SameValue();
+
+        emit NewTreasury(treasury, _treasury);
+
+        treasury = _treasury;
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -225,17 +250,22 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         // tmp var used to keep track what amount is left to use as payment
         uint _rest = _amount;
+        uint _interestToBePaid = 0;
 
         if (_amount >= _totalDebt) {
             // All debt is repaid
             _amount = _totalDebt;
             _timestamps[msg.sender] = 0;
             _rest = 0;
+            _interestToBePaid = _iTokens;
 
             // Burn debt & interests
             dToken.burn(msg.sender, _dTokens);
             if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
         } else {
+            // In case of amount <= diff || amount <= (diff + iTokens)
+            _interestToBePaid = _amount;
+
             if (_amount <= _diff) {
                 _rest = 0;
 
@@ -255,6 +285,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
                     if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
 
                     _rest -= _iTokens;
+                    _interestToBePaid = _diff + _iTokens;
 
                     // Pay partially the debt
                     dToken.burn(msg.sender, _rest);
@@ -266,6 +297,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         }
 
         asset.safeTransferFrom(msg.sender, address(this), _amount);
+        _chargeFees(_interestToBePaid);
 
         emit Repay(msg.sender, _amount);
     }
@@ -300,7 +332,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         // Interest is only calculated over the original borrow amount
         // Use all the operations here to prevent _losing_ precision
-        return _bal * interestRate * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR / PRECISION;
+        return _bal * (interestRate + piFee) * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR / PRECISION;
     }
 
     function _checkBorrowAmount(uint _amount) internal view {
@@ -311,5 +343,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _originatorFeeFor(uint _amount) internal view returns (uint) {
         return _amount * originatorFee / PRECISION;
+    }
+
+    function _chargeFees(uint _interestAmount) internal {
+        uint _fee = _interestAmount * piFee / (piFee + interestRate);
+
+        if (_fee <= 0) return;
+
+        asset.safeTransfer(treasury, _fee);
+
+        emit CollectedFee(_fee);
     }
 }
