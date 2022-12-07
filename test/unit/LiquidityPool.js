@@ -23,7 +23,6 @@ const getPiFeeFor = async function (lPool, amount) {
   return amount.mul(piFee).div(piFee.add(rate))
 }
 
-
 const getInterest = async function (lPool, base, seconds) {
   // 1% piFee
   // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
@@ -450,7 +449,7 @@ describe('Liquidity Pool', async function () {
         ).to.emit(
           token, 'Transfer' // PiFee
         ).withArgs(
-          lPool.address, treasury.address,  piFee
+          lPool.address, treasury.address, piFee
         ).to.not.emit(iToken, 'Transfer') // TMP: Will change for Burn event
 
         expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
@@ -704,7 +703,7 @@ describe('Liquidity Pool', async function () {
         ).to.emit(
           token, 'Transfer' // PiFee
         ).withArgs(
-          lPool.address, treasury.address,  piFee
+          lPool.address, treasury.address, piFee
         ).to.not.emit(
           dToken, 'Transfer' // TMP: will change for Mint
         )
