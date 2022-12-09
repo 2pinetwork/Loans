@@ -863,8 +863,7 @@ describe('Liquidity Pool', async function () {
           setupCollateral({...fixtures, lPool}),
         ])
 
-        // Add liquidity & Repayment
-        await token.mint(lPool.address, 10e18 + '')
+        // Add tokens for Repayment
         await token.mint(bob.address, 10e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
@@ -936,9 +935,9 @@ describe('Liquidity Pool', async function () {
           setupCollateral({...fixtures, lPool}),
         ])
 
-        // Add liquidity & Repayment
-        await token.mint(lPool.address, 10e18 + '')
+        // Add tokens for Repayment
         await token.mint(bob.address, 10e18 + '')
+
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
@@ -1009,8 +1008,7 @@ describe('Liquidity Pool', async function () {
           setupCollateral({...fixtures, lPool}),
         ])
 
-        // Add liquidity & Repayment
-        await token.mint(lPool.address, 10e18 + '')
+        // Add tokens for Repayment
         await token.mint(bob.address, 10e18 + '')
 
         const depositAmount = ethers.utils.parseUnits('9.9', 18)

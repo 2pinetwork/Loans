@@ -358,14 +358,13 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _chargeFees(uint _interestAmount) internal {
         uint _fee;
-        // Get piFee proportion
         uint _originator = remainingOriginatorFee[msg.sender];
 
         if (_originator > 0) {
-            // si el cobro de intereses es mayor al originatorFee
             if (_interestAmount >= _originator) {
                 // Send to treasury the entire originatorFee and the remaining part
-                _fee = _originator + ((_interestAmount - _originator) * piFee / PRECISION);
+                _fee = _originator + ((_interestAmount - _originator) * piFee / (piFee + interestRate));
+
                 // Clean originatorFee debt
                 remainingOriginatorFee[msg.sender] = 0;
 
