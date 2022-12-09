@@ -838,7 +838,7 @@ describe('Liquidity Pool', async function () {
       })
     })
 
-    describe('Repay with originator Fee', async function () {
+    describe('Repay with originator Fee + piFee', async function () {
       it('Should work for repay == debt', async function () {
         const dueDate  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
         const fixtures = await loadFixture(deploy)
@@ -859,6 +859,7 @@ describe('Liquidity Pool', async function () {
           DToken.attach(await lPool.iToken()),
           lPool.setOracle(oracle.address),
           lPool.setTreasury(treasury.address),
+          lPool.setPiFee(0.02e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
           setupCollateral({...fixtures, lPool}),
         ])
@@ -931,6 +932,7 @@ describe('Liquidity Pool', async function () {
           DToken.attach(await lPool.iToken()),
           lPool.setOracle(oracle.address),
           lPool.setTreasury(treasury.address),
+          lPool.setPiFee(0.02e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
           setupCollateral({...fixtures, lPool}),
         ])
@@ -1004,6 +1006,7 @@ describe('Liquidity Pool', async function () {
           DToken.attach(await lPool.iToken()),
           lPool.setOracle(oracle.address),
           lPool.setTreasury(treasury.address),
+          lPool.setPiFee(0.02e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
           setupCollateral({...fixtures, lPool}),
         ])
