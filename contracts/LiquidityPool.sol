@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -94,6 +94,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event NewPiFee(uint _oldFee, uint _newFee);
     event NewTreasury(address _oldTreasury, address _newTreasury);
     event CollectedFee(uint _fee);
+    event CollectedOriginatorFee(uint _fee);
 
     /*********** COMMON FUNCTIONS ***********/
     function decimals() public view returns (uint8) {
@@ -221,32 +222,24 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         address _account = msg.sender;
 
-        console.log('LiquidityPool.sol:223');
         asset.safeTransfer(_account, _amount);
 
-        console.log('LiquidityPool.sol:226');
         // Originator fee is based on the borrowed amount,
         // and will be prioritized over the interest fee when the debt is paid.
-        console.log('LiquidityPool.sol:229');
         uint _originatorFeeAmount = _originatorFeeFor(_amount);
         remainingOriginatorFee[msg.sender] += _originatorFeeAmount;
 
-        console.log('LiquidityPool.sol:233');
         // New amount + interest tokens to be minted since the last interaction
         // iToken mint should be first to prevent "new dToken mint" to get in
         // the debt calc
-        console.log('LiquidityPool.sol:237');
         uint _interestTokens = _debtTokenDiff(_account);
         // originatorFee is directly added to the interest to prevent the borrower
         // receive less than expected. Instead the account will have to pay the interest for it
-        console.log('LiquidityPool.sol:241');
         _interestTokens += _originatorFeeAmount;
-        console.log('LiquidityPool.sol:243');
 
         iToken.mint(_account, _interestTokens);
         dToken.mint(_account, _amount);
 
-        console.log('LiquidityPool.sol:248');
         _timestamps[_account] = uint40(block.timestamp);
 
         emit Borrow(_account, _amount);
@@ -311,8 +304,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             _timestamps[msg.sender] = uint40(block.timestamp);
         }
 
+        // Take the payment
         asset.safeTransferFrom(msg.sender, address(this), _amount);
-        _chargeFees(_interestToBePaid);
+
+        // charge fees from payment
+        if (_interestToBePaid > 0) _chargeFees(_interestToBePaid);
 
         emit Repay(msg.sender, _amount);
     }
@@ -364,7 +360,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _fee;
         // Get piFee proportion
         uint _originator = remainingOriginatorFee[msg.sender];
-        console.log('LiquidityPool.sol:356', _interestAmount, _originator);
 
         if (_originator > 0) {
             // si el cobro de intereses es mayor al originatorFee
@@ -373,12 +368,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
                 _fee = _originator + ((_interestAmount - _originator) * piFee / PRECISION);
                 // Clean originatorFee debt
                 remainingOriginatorFee[msg.sender] = 0;
+
+                emit CollectedOriginatorFee(_originator);
             } else {
                 // Send to treasury the entire interest amount (originator Fee has priority)
                 _fee = _interestAmount;
 
                 // Pay part of the originatorFee debt
                 remainingOriginatorFee[msg.sender] -= _interestAmount;
+
+                emit CollectedOriginatorFee(_interestAmount);
             }
         } else {
             _fee = _interestAmount * piFee / (piFee + interestRate);
