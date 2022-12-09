@@ -53,20 +53,17 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     uint public immutable dueDate;
 
     // Fees
-    uint public immutable originatorFee;
-    uint public piFee;
     address public treasury;
+    uint public piFee;
+    uint public originatorFee;
     // Fees to be paid by borrowers
     mapping(address => uint) public remainingOriginatorFee;
 
-    constructor(IERC20Metadata _asset, uint _dueDate, uint _originatorFee) {
+    constructor(IERC20Metadata _asset, uint _dueDate) {
         if (_dueDate <= block.timestamp) revert Errors.DUE_DATE_IN_THE_PAST();
-        // Shouldn't be more than 100% of originatorFee
-        if (_originatorFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
 
         asset = _asset;
         dueDate = _dueDate;
-        originatorFee = _originatorFee;
 
         // Liquidity token
         lToken = new LToken(asset);
@@ -89,6 +86,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
     event Borrow(address _sender, uint _amount);
     event Repay(address _sender, uint _amount);
+    event NewOriginatorFee(uint _oldFee, uint _newFee);
     event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
     event NewOracle(address _oldOracle, address _newOracle);
     event NewPiFee(uint _oldFee, uint _newFee);
@@ -101,13 +99,23 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return asset.decimals();
     }
 
-    function setInterestInterestRate(uint _newInterestRate) external onlyAdmin {
+    function setInterestRate(uint _newInterestRate) external onlyAdmin {
         if (_newInterestRate > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
 
         emit NewInterestInterestRate(interestRate, _newInterestRate);
 
         interestRate = _newInterestRate;
+    }
+
+    function setOriginatorFee(uint _newOriginatorFee) external onlyAdmin {
+        // No more than 100% JIC
+        if (_newOriginatorFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
+        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
+
+        emit NewOriginatorFee(originatorFee, _newOriginatorFee);
+
+        originatorFee = _newOriginatorFee;
     }
 
     function setPiFee(uint _piFee) external onlyAdmin {

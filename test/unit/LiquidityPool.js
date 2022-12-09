@@ -81,7 +81,7 @@ describe('Liquidity Pool', async function () {
     const CPool      = await ethers.getContractFactory('CollateralPool')
     const LToken     = await ethers.getContractFactory('LToken')
     const DToken     = await ethers.getContractFactory('DToken')
-    const lPool      = await LPool.deploy(token.address, dueDate, 0)
+    const lPool      = await LPool.deploy(token.address, dueDate)
     const cPool      = await CPool.deploy(token.address)
     const lToken     = await LToken.attach(await lPool.lToken())
     const dToken     = await DToken.attach(await lPool.dToken())
@@ -120,7 +120,7 @@ describe('Liquidity Pool', async function () {
     it('Should work', async function () {
       const dueDate                  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
       const { token, LPool, LToken } = await loadFixture(deploy)
-      const lPool                    = await LPool.deploy(token.address, dueDate, 0)
+      const lPool                    = await LPool.deploy(token.address, dueDate)
       const lToken                   = await LToken.attach(await lPool.lToken())
 
       expect(lPool.address).to.not.be.equal(ZERO_ADDRESS)
@@ -156,7 +156,7 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
-      const lPool            = await LPool.deploy(token.address, dueDate, 0)
+      const lPool            = await LPool.deploy(token.address, dueDate)
 
       await mine(2)
 
@@ -346,7 +346,7 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
-      const lPool            = await LPool.deploy(token.address, dueDate, 0)
+      const lPool            = await LPool.deploy(token.address, dueDate)
 
       await mine(2)
 
@@ -357,15 +357,10 @@ describe('Liquidity Pool', async function () {
       const fixtures     = await loadFixture(deploy)
       const borrowAmount = ethers.utils.parseUnits('9.9', 18)
 
-      const { bob, oracle, token, DToken, LPool } = fixtures
-
-      const dueDate = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
-      const lPool   = await LPool.deploy(token.address, dueDate, 0.01e18 + '')
-      const dToken  = await DToken.attach(await lPool.dToken())
-      const iToken  = await DToken.attach(await lPool.iToken())
+      const { bob, lPool, dToken, iToken, token, } = fixtures
 
       await Promise.all([
-        lPool.setOracle(oracle.address),
+        lPool.setOriginatorFee(0.01e18 + ''),
         token.mint(lPool.address, 10e18 + ''),
         setupCollateral({...fixtures, lPool})
       ])
@@ -838,30 +833,23 @@ describe('Liquidity Pool', async function () {
       })
     })
 
-    describe('Repay with originator Fee + piFee', async function () {
+    describe('Repay with originator Fee', async function () {
       it('Should work for repay == debt', async function () {
-        const dueDate  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
         const fixtures = await loadFixture(deploy)
 
         const {
           bob,
-          oracle,
+          dToken,
+          iToken,
+          lPool,
           token,
           treasury,
-          DToken,
-          LPool,
         } = fixtures
 
-        const lPool = await LPool.deploy(token.address, dueDate, 0.01e18 + '') // 1% OriginatorFee
-
-        const [dToken, iToken] = await Promise.all([
-          DToken.attach(await lPool.dToken()),
-          DToken.attach(await lPool.iToken()),
-          lPool.setOracle(oracle.address),
-          lPool.setTreasury(treasury.address),
-          lPool.setPiFee(0.02e18 + ''),
+        await Promise.all([
+          lPool.setOriginatorFee(0.01e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
-          setupCollateral({...fixtures, lPool}),
+          setupCollateral(fixtures),
         ])
 
         // Add tokens for Repayment
@@ -913,26 +901,19 @@ describe('Liquidity Pool', async function () {
       })
 
      it('Should work for repay (paying originator fee and keep debt token)', async function () {
-        const dueDate  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
         const fixtures = await loadFixture(deploy)
 
         const {
           bob,
-          oracle,
+          dToken,
+          iToken,
+          lPool,
           token,
           treasury,
-          DToken,
-          LPool,
         } = fixtures
 
-        const lPool = await LPool.deploy(token.address, dueDate, 0.01e18 + '') // 1% OriginatorFee
-
-        const [dToken, iToken] = await Promise.all([
-          DToken.attach(await lPool.dToken()),
-          DToken.attach(await lPool.iToken()),
-          lPool.setOracle(oracle.address),
-          lPool.setTreasury(treasury.address),
-          lPool.setPiFee(0.02e18 + ''),
+        await Promise.all([
+          lPool.setOriginatorFee(0.01e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
           setupCollateral({...fixtures, lPool}),
         ])
@@ -987,26 +968,19 @@ describe('Liquidity Pool', async function () {
       })
 
      it('Should work for repay < originatorFee', async function () {
-        const dueDate  = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
         const fixtures = await loadFixture(deploy)
 
         const {
           bob,
-          oracle,
+          dToken,
+          iToken,
+          lPool,
           token,
           treasury,
-          DToken,
-          LPool,
         } = fixtures
 
-        const lPool = await LPool.deploy(token.address, dueDate, 0.01e18 + '') // 1% OriginatorFee
-
-        const [dToken, iToken] = await Promise.all([
-          DToken.attach(await lPool.dToken()),
-          DToken.attach(await lPool.iToken()),
-          lPool.setOracle(oracle.address),
-          lPool.setTreasury(treasury.address),
-          lPool.setPiFee(0.02e18 + ''),
+        await Promise.all([
+          lPool.setOriginatorFee(0.01e18 + ''),
           token.mint(lPool.address, 10e18 + ''),
           setupCollateral({...fixtures, lPool}),
         ])
@@ -1051,7 +1025,7 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { token, LPool } = await loadFixture(deploy)
       const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
-      const lPool            = await LPool.deploy(token.address, dueDate, 0)
+      const lPool            = await LPool.deploy(token.address, dueDate)
 
       await mine(2)
 

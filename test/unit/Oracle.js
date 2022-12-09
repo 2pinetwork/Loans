@@ -12,7 +12,7 @@ describe('Oracle', async function () {
     const CPool          = await ethers.getContractFactory('CollateralPool')
     const LPool          = await ethers.getContractFactory('LiquidityPool')
     const cPool          = await CPool.deploy(token.address)
-    const lPool          = await LPool.deploy(token.address, dueDate, 0)
+    const lPool          = await LPool.deploy(token.address, dueDate)
     const cToken         = await (await ethers.getContractFactory('CToken')).attach(await cPool.cToken())
     const lToken         = await (await ethers.getContractFactory('LToken')).attach(await lPool.lToken())
     const globalC        = await (await ethers.getContractFactory('Global')).deploy()
