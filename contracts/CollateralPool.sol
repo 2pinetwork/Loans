@@ -130,4 +130,9 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     function availableCollateral(address _account) public view returns (uint) {
         return balanceOf(_account) * getPricePerFullShare() * collateralRatio / MAX_COLLATERAL_RATIO / (10 ** decimals());
     }
+
+    function fullCollateral(address _account) public view returns (uint) {
+        return balanceOf(_account) * getPricePerFullShare() / (10 ** decimals());
+    }
+
 }

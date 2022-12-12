@@ -11,4 +11,5 @@ interface IPool {
     function collateralRatio() external view returns (uint);
     function MAX_COLLATERAL_RATIO() external view returns (uint);
     function availableCollateral(address) external view returns (uint);
+    function fullCollateral(address) external view returns (uint);
 }
