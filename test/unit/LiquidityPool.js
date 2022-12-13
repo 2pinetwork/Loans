@@ -1035,7 +1035,7 @@ describe('Liquidity Pool', async function () {
     })
   })
 
-  describe('Oracle.HealthFactor', async () => {
+  describe('Oracle.HealthFactor', async function () {
     it('Should return valid ratio', async function () {
       const fixtures = await loadFixture(deploy)
 
