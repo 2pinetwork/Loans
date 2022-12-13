@@ -5,6 +5,7 @@
   "scripts": {
     "coverage": "rm -Rf coverage.json coverage/ cache/ && npx hardhat coverage",
     "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
     "lint": "eslint test/"
   },
   "devDependencies": {

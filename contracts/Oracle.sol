@@ -14,7 +14,13 @@ contract Oracle is PiAdmin {
     // Time toleration for price feed
     uint public toleration;
     uint public constant MAX_TOLERATION = 24 hours;
+    uint public constant BASE_DECIMALS  = 18;
     uint public constant BASE_PRECISION = 1e18;
+
+    // Max of 50% of the total collateral in debt
+    uint public liquidationThreshold = 0.5e18;
+    uint public constant MAX_THREASHOLD = 0.95e18; // at least 5% to reward the liquidator
+    uint public constant MIN_THREASHOLD = 0.20e18;
 
     IGlobal public immutable piGlobal;
 
@@ -24,6 +30,8 @@ contract Oracle is PiAdmin {
     error SameFeed();
     error SameToleration();
     error ZeroAddress();
+    error GreaterThan(string);
+    error LessThan(string);
 
     constructor(IGlobal _global) {
         // at least check the contract
@@ -35,6 +43,7 @@ contract Oracle is PiAdmin {
 
     event NewToleration(uint _old, uint _new);
     event NewPriceFeed(address _token, address _feed);
+    event NewLiquidationThreshold(uint _old, uint _new);
 
     function setToleration(uint _newToleration) external onlyAdmin {
         if (_newToleration > MAX_TOLERATION) revert MaxToleration();
@@ -43,6 +52,15 @@ contract Oracle is PiAdmin {
         emit NewToleration(toleration, _newToleration);
 
         toleration = _newToleration;
+    }
+
+    function setLiquidationThreshold(uint _newLT) external onlyAdmin {
+        if (_newLT > MAX_THREASHOLD) revert GreaterThan('MAX_THREASHOLD');
+        if (_newLT < MIN_THREASHOLD) revert LessThan('MIN_THREASHOLD');
+
+        emit NewLiquidationThreshold(liquidationThreshold, _newLT);
+
+        liquidationThreshold = _newLT;
     }
 
     function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin {
@@ -57,6 +75,18 @@ contract Oracle is PiAdmin {
         priceFeeds[_token] = _feed;
 
         emit NewPriceFeed(_token, address(_feed));
+    }
+
+    // HF, liquidation Threadhold
+    function healthFactor(address _account) public view returns (uint _hf, uint _lf) {
+        uint _borrowed = _borrowedInUsd(_account);
+
+        if (_borrowed <= 0) return (type(uint).max, type(uint).max);
+
+        (uint _available, uint _total) = _collateralInUsd(_account);
+
+        _hf = _available * BASE_PRECISION / _borrowed;
+        _lf = _total * liquidationThreshold / _borrowed;
     }
 
     function availableCollateralForAsset(address _account, address _asset) external view returns (uint _available) {
@@ -79,7 +109,7 @@ contract Oracle is PiAdmin {
             if (_bal <= 0) continue;
 
             // Return balance in the _asset precision
-            _available += _fromPoolPrecision(_pool, _assetDec, _bal) * _price / _assetPrice;
+            _available += _fixPrecision(_pool.decimals(), _assetDec, _bal) * _price / _assetPrice;
         }
 
         if (_available <= 0) return _available;
@@ -89,27 +119,12 @@ contract Oracle is PiAdmin {
         (_available > _borrowed) ? (_available -= _borrowed) : (_available = 0);
     }
 
-    function _borrowedInAsset(address _account, address _asset) internal view returns (uint _borrowed) {
-        address[] memory _pools = piGlobal.liquidityPools();
-
+    function _borrowedInAsset(address _account, address _asset) internal view returns (uint) {
         uint _assetPrice = _normalizedPrice(_asset);
         uint _assetDec   = IERC20Metadata(_asset).decimals();
+        uint _borrowed   = _borrowedInUsd(_account) * _assetPrice / BASE_PRECISION;
 
-        if (_assetPrice <= 0) revert InvalidFeed(_asset);
-
-        for (uint i = 0; i < _pools.length; i++) {
-            IPool _pool = IPool(_pools[i]);
-            uint _debt  = _pool.debt(_account);
-
-            if (_debt <= 0) continue;
-
-            uint _price = _normalizedPrice(_pool.asset());
-
-            if (_price <= 0) revert InvalidFeed(_pool.asset());
-
-            // Return balance in the _asset precision
-            _borrowed += _fromPoolPrecision(_pool, _assetDec, _debt) * _price / _assetPrice;
-        }
+        return _fixPrecision(BASE_DECIMALS, _assetDec, _borrowed);
     }
 
     function _normalizedPrice(address _asset) internal view returns (uint) {
@@ -130,11 +145,43 @@ contract Oracle is PiAdmin {
         return uint(_roundPrice) * _offset;
     }
 
-    function _fromPoolPrecision(IPool _pool, uint _assetDec, uint _amount) internal view returns (uint) {
-        uint _poolDec = _pool.decimals();
-
-        if (_assetDec > _poolDec) return _amount * 10 ** (_assetDec - _poolDec);
-        else                      return _amount / 10 ** (_poolDec - _assetDec);
+    function _fixPrecision(uint _dec, uint _assetDec, uint _amount) internal pure returns (uint) {
+        if (_assetDec > _dec) return _amount * 10 ** (_assetDec - _dec);
+        else                  return _amount / 10 ** (_dec - _assetDec);
     }
 
+    function _borrowedInUsd(address _account) internal view returns (uint _amount) {
+        address[] memory _lPools = piGlobal.liquidityPools();
+
+        for (uint i = 0; i < _lPools.length; i++) {
+            IPool _pool = IPool(_lPools[i]);
+            uint _price = _normalizedPrice(_pool.asset());
+
+            if (_price <= 0) revert InvalidFeed(_pool.asset());
+
+            uint _debt  = _pool.debt(_account);
+
+            _amount += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _debt) * _price / BASE_PRECISION;
+        }
+    }
+
+    function _collateralInUsd(address _account) internal view returns (uint _availableInUsd, uint _totalInUsd) {
+        address[] memory _cPools = piGlobal.collateralPools();
+
+        for (uint i = 0; i < _cPools.length; i++) {
+            IPool _pool = IPool(_cPools[i]);
+            uint _price = _normalizedPrice(_pool.asset());
+
+            if (_price <= 0) revert InvalidFeed(_pool.asset());
+
+            uint _available = _pool.availableCollateral(_account);
+            uint _bal       = _pool.fullCollateral(_account);
+
+            if (_bal <= 0 && _available <= 0) continue;
+
+            // Collateral in USD in 18 decimals precision
+            _availableInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
+            _totalInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _bal) * _price / BASE_PRECISION;
+        }
+    }
 }

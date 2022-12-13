@@ -93,6 +93,7 @@ describe('Liquidity Pool', async function () {
       lPool.setOracle(oracle.address),
       lPool.setTreasury(treasury.address),
       lPool.setPiFee(0.02e18 + ''),
+      globalC.addLiquidityPool(lPool.address),
     ])
 
     return {
@@ -1031,6 +1032,50 @@ describe('Liquidity Pool', async function () {
 
       // doesn't matter if it has debt or not
       await expect(lPool.repay(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
+    })
+  })
+
+  describe('Oracle.HealthFactor', async function () {
+    it('Should return valid ratio', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const {
+        bob,
+        cPool,
+        oracle,
+        lPool,
+        token,
+      } = fixtures
+
+      await Promise.all([
+        token.mint(lPool.address, 10e18 + ''),
+        setupCollateral({...fixtures, lPool}),
+      ])
+
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      await lPool.connect(bob).borrow(depositAmount)
+
+      expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
+
+      let [hf, lt] = await oracle.healthFactor(bob.address);
+
+      expect(hf).to.be.within(0.99e18 + '', 1.01e18 + '')
+      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '');
+
+      await cPool.setCollateralRatio(0.5e18 + '');
+
+      [hf, lt] = await oracle.healthFactor(bob.address);
+
+      expect(hf).to.be.within(0.49e18 + '', 0.5e18 + '')
+      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
+
+      await cPool.setCollateralRatio(0.3e18 + '');
+
+      [hf, lt] = await oracle.healthFactor(bob.address);
+
+      expect(hf).to.be.within(0.29e18 + '', 0.3e18 + '')
+      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
     })
   })
 })
