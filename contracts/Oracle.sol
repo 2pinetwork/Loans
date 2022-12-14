@@ -25,6 +25,7 @@ contract Oracle is PiAdmin {
 
     IGlobal public immutable piGlobal;
 
+    error NotValidPool();
     error InvalidFeed(address);
     error MaxToleration();
     error OldPrice();
@@ -184,5 +185,9 @@ contract Oracle is PiAdmin {
             _availableInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
             _totalInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _bal) * _price / BASE_PRECISION;
         }
+    }
+
+    function getLiquidableAmounts(address _account, address _liqPool, uint _amount) external view returns (uint, uint) {
+
     }
 }

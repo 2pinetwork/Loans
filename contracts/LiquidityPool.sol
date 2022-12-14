@@ -254,15 +254,23 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function repay(uint _amount) external nonReentrant notExpired {
+        _repay(msg.sender, msg.sender, _amount);
+    }
+
+    function repay(address _payer, address _account, uint _amount) external nonReentrant notExpired {
+        _repay(_payer, _account, _amount);
+    }
+
+    function _repay(address _payer, address _account, uint _amount) internal {
         if (_amount <= 0) revert Errors.ZeroAmount();
-        if (_timestamps[msg.sender] == 0) revert Errors.NoDebt();
+        if (_timestamps[_account] == 0) revert Errors.NoDebt();
 
         (
             uint _dTokens,
             uint _iTokens,
             uint _diff,
             uint _totalDebt
-        ) = _debt(msg.sender);
+        ) = _debt(_account);
 
         // tmp var used to keep track what amount is left to use as payment
         uint _rest = _amount;
@@ -271,13 +279,13 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         if (_amount >= _totalDebt) {
             // All debt is repaid
             _amount = _totalDebt;
-            _timestamps[msg.sender] = 0;
+            _timestamps[_account] = 0;
             _rest = 0;
             _interestToBePaid = _diff + _iTokens;
 
             // Burn debt & interests
-            dToken.burn(msg.sender, _dTokens);
-            if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
+            dToken.burn(_account, _dTokens);
+            if (_iTokens > 0) iToken.burn(_account, _iTokens);
         } else {
             // In case of amount <= diff || amount <= (diff + iTokens)
             _interestToBePaid = _amount;
@@ -287,38 +295,38 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
                 // Pay part of the not-minted amount since last interaction
                 // and mint the other part.
-                if (_diff - _amount > 0) iToken.mint(msg.sender, _diff - _amount);
+                if (_diff - _amount > 0) iToken.mint(_account, _diff - _amount);
             } else {
                 _rest -= _diff;
 
                 if (_rest <= _iTokens) {
                     // Pay part of the interest amount
-                    iToken.burn(msg.sender, _rest);
+                    iToken.burn(_account, _rest);
 
                     _rest = 0;
                 } else {
                     // Pay all the interests
-                    if (_iTokens > 0) iToken.burn(msg.sender, _iTokens);
+                    if (_iTokens > 0) iToken.burn(_account, _iTokens);
 
                     _rest -= _iTokens;
                     _interestToBePaid = _diff + _iTokens;
 
                     // Pay partially the debt
-                    dToken.burn(msg.sender, _rest);
+                    dToken.burn(_account, _rest);
                 }
             }
 
             // Update last user interaction
-            _timestamps[msg.sender] = uint40(block.timestamp);
+            _timestamps[_account] = uint40(block.timestamp);
         }
 
         // Take the payment
-        asset.safeTransferFrom(msg.sender, address(this), _amount);
+        asset.safeTransferFrom(_payer, address(this), _amount);
 
         // charge fees from payment
         if (_interestToBePaid > 0) _chargeFees(_interestToBePaid);
 
-        emit Repay(msg.sender, _amount);
+        emit Repay(_account, _amount);
     }
 
     function debt(address _account) external view returns (uint) {
