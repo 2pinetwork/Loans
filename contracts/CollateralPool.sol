@@ -11,7 +11,7 @@ import {CToken} from "./CToken.sol";
 
 import "../interfaces/IOracle.sol";
 import "../interfaces/IGlobal.sol";
-import "../interfaces/IPool.sol";
+import {ILPool} from "../interfaces/IPool.sol";
 
 contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
@@ -36,6 +36,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     error MaxRatio();
     error ZeroAddress();
     error SameAddress();
+    error CantLiquidate(string);
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
@@ -160,26 +161,27 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     // _liquidityPool is the pool with the debt to be paid
     // _amount is the current collateral pool amount to be liquidated
     function liquidationCall(address _account, address _liquidityPool, uint _amount) public nonReentrant {
-        // (uint _hf, uint _lt) = IOracle(global.getOracle())oracle.healthFactor(_account);
+        (uint _liquidableCollateral, uint _liquidableDebt) = IOracle(piGlobal.oracle()).getLiquidableAmounts(_account, _liquidityPool);
 
-        // uint _totalDebt = IPool(_liquidityPool).debt(_account);
+        if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
+        if (_amount > _liquidableCollateral) revert CantLiquidate("Greater Amount");
 
-        // if (_totalDebt <= 0) revert ZeroAmount();
+        uint _debtToPay = 0;
+        // regla de 3 simple para obtener la cantidad de tokens a liquidar
+        if (_amount < _liquidableCollateral) _debtToPay = _amount * _liquidableDebt / _liquidableCollateral;
 
-        (uint _liquidableAmount, uint _debtToBePaid) = IOracle(piGlobal.oracle()).getLiquidableAmounts(_account, _liquidityPool, _amount);
-
-        // Pay liquidation debt
-        // IERC20Metadata _debtAsset = IERC20Metadata(IPool(_liquidityPool).asset());
-        // _debtAsset.safeTransferFrom(msg.sender, address(this), _debtToBePaid);
-        // _debtAsset.approve()
+        // JiC...
+        if (_debtToPay > _liquidableDebt) revert CantLiquidate("_amount pay too much debt");
 
         // Get the burnable amount of tokens
-        uint _shares = _liquidableAmount * cToken.totalSupply() / balance();
+        uint _shares = _amount * cToken.totalSupply() / balance();
 
-        cToken.burn(msg.sender, _shares);
-        asset.safeTransfer(msg.sender, _liquidableAmount);
+        // Burn liquidated account tokens
+        cToken.burn(_account, _shares);
+        // Transfer liquidable amount to liquidator
+        asset.safeTransfer(msg.sender, _amount);
 
-        // Liquidator should repay
-        IPool(_liquidityPool).repay(msg.sender, _account, _debtToBePaid);
+        // Liquidator must repay
+        ILPool(_liquidityPool).repay(msg.sender, _account, _debtToPay);
     }
 }

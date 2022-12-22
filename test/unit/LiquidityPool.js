@@ -1023,19 +1023,46 @@ describe('Liquidity Pool', async function () {
       })
     })
 
-    it('Should not work for expired pool', async function () {
-      const { token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
-      const lPool            = await LPool.deploy(token.address, dueDate)
+    it('Should work for expired pool', async function () {
+        const fixtures = await loadFixture(deploy)
 
-      await mine(2)
+        const { bob, globalC, oracle, token, LPool } = fixtures
 
-      // doesn't matter if it has debt or not
-      await expect(lPool.repay(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
+        const dueDate = (await ethers.provider.getBlock()).timestamp + 20
+        const lPool   = await LPool.deploy(token.address, dueDate)
+
+        await Promise.all([
+          token.mint(lPool.address, 10e18 + ''),
+          lPool.setOracle(oracle.address),
+          globalC.addLiquidityPool(lPool.address),
+          setupCollateral({...fixtures, lPool}),
+        ])
+
+        // Add tokens for Repayment
+        await token.mint(bob.address, 10e18 + '')
+
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+        await lPool.connect(bob).borrow(depositAmount)
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
+
+        await mine(20)
+
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
+
+        expect(await lPool.expired()).to.be.equal(true)
+
+       // Should repay with expired pool
+        await expect(lPool.connect(bob).repay(depositAmount)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(
+          bob.address, depositAmount
+        )
     })
   })
 
-  describe('Oracle.HealthFactor', async () => {
+  describe('Oracle.HealthFactor', async function () {
     it('Should return valid ratio', async function () {
       const fixtures = await loadFixture(deploy)
 

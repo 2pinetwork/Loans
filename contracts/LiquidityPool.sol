@@ -146,6 +146,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         treasury = _treasury;
     }
 
+    function expired() external view returns (bool) {
+        return block.timestamp > dueDate;
+    }
+
     /*********** LIQUIDITY FUNCTIONS ***********/
     function balanceOf(address _account) public view returns (uint) {
         return lToken.balanceOf(_account);
@@ -253,11 +257,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit Borrow(_account, _amount);
     }
 
-    function repay(uint _amount) external nonReentrant notExpired {
+    function repay(uint _amount) external nonReentrant {
         _repay(msg.sender, msg.sender, _amount);
     }
 
-    function repay(address _payer, address _account, uint _amount) external nonReentrant notExpired {
+    modifier fromCollateralPool {
+        // require(msg.sender == address(collateralPool), "Only collateral pool");
+        _;
+    }
+
+    function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
     }
 
@@ -355,11 +364,19 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _debtTokenDiff(address _account) internal view returns (uint) {
         uint _bal = dToken.balanceOf(_account);
-        if (_bal <= 0) return 0;
+
+        if (_bal <= 0 || _timestamps[_account] <= 0) return 0;
+
+        // Difference between the last interaction and (now or due date)
+        uint _timeDiff = block.timestamp;
+
+        if (_timeDiff > dueDate) _timeDiff = dueDate;
+
+        _timeDiff -= _timestamps[_account];
 
         // Interest is only calculated over the original borrow amount
         // Use all the operations here to prevent _losing_ precision
-        return _bal * (interestRate + piFee) * (block.timestamp - uint(_timestamps[_account])) / SECONDS_PER_YEAR / PRECISION;
+        return _bal * (interestRate + piFee) * _timeDiff / SECONDS_PER_YEAR / PRECISION;
     }
 
     function _checkBorrowAmount(uint _amount) internal view {

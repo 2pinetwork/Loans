@@ -12,28 +12,31 @@ import "../interfaces/IPool.sol";
 contract Oracle is PiAdmin {
     mapping(address => IChainLink) public priceFeeds;
 
-    // Time toleration for price feed
-    uint public toleration;
-    uint public constant MAX_TOLERATION = 24 hours;
+    // Price time toleration for price feed
+    uint public priceTimeToleration;
+    uint public constant MAX_PRICE_TIME_TOLERATION = 24 hours;
     uint public constant BASE_DECIMALS  = 18;
     uint public constant BASE_PRECISION = 1e18;
 
     // Max of 50% of the total collateral in debt
     uint public liquidationThreshold = 0.5e18;
-    uint public constant MAX_THREASHOLD = 0.95e18; // at least 5% to reward the liquidator
+    uint public liquidationBonus = 0.01e18; // 1% bonus for liquidator
+    uint public constant MAX_THREASHOLD = 1.0e18;
     uint public constant MIN_THREASHOLD = 0.20e18;
+    uint public constant MAX_LIQUIDATION_BONUS = 0.20e18; // 20% is a huge bonus...
 
     IGlobal public immutable piGlobal;
 
     error NotValidPool();
     error InvalidFeed(address);
-    error MaxToleration();
+    error MaxPriceTimeToleration();
     error OldPrice();
     error SameFeed();
-    error SameToleration();
+    error SamePriceTimeToleration();
     error ZeroAddress();
     error GreaterThan(string);
     error LessThan(string);
+    error NothingToLiquidate();
 
     constructor(IGlobal _global) {
         // at least check the contract
@@ -43,17 +46,18 @@ contract Oracle is PiAdmin {
         piGlobal = _global;
     }
 
-    event NewToleration(uint _old, uint _new);
+    event NewPriceTimeToleration(uint _old, uint _new);
     event NewPriceFeed(address _token, address _feed);
     event NewLiquidationThreshold(uint _old, uint _new);
+    event NewLiquidationBonus(uint _old, uint _new);
 
-    function setToleration(uint _newToleration) external onlyAdmin {
-        if (_newToleration > MAX_TOLERATION) revert MaxToleration();
-        if (toleration == _newToleration) revert SameToleration();
+    function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin {
+        if (_newPriceTimeToleration > MAX_PRICE_TIME_TOLERATION) revert MaxPriceTimeToleration();
+        if (priceTimeToleration == _newPriceTimeToleration) revert SamePriceTimeToleration();
 
-        emit NewToleration(toleration, _newToleration);
+        emit NewPriceTimeToleration(priceTimeToleration, _newPriceTimeToleration);
 
-        toleration = _newToleration;
+        priceTimeToleration = _newPriceTimeToleration;
     }
 
     function setLiquidationThreshold(uint _newLT) external onlyAdmin {
@@ -63,6 +67,14 @@ contract Oracle is PiAdmin {
         emit NewLiquidationThreshold(liquidationThreshold, _newLT);
 
         liquidationThreshold = _newLT;
+    }
+
+    function setLiquidationBonus(uint _newLB) external onlyAdmin {
+        if (_newLB > MAX_LIQUIDATION_BONUS) revert GreaterThan('MAX_LIQUIDATION_BONUS');
+
+        emit NewLiquidationBonus(liquidationBonus, _newLB);
+
+        liquidationBonus = _newLB;
     }
 
     function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin {
@@ -81,16 +93,21 @@ contract Oracle is PiAdmin {
 
     // HF, liquidation Threadhold
     function healthFactor(address _account) public view returns (uint _hf, uint _lf) {
-        uint _borrowed = _borrowedInUsd(_account);
+        uint _borrowed = _borrowedInUSD(_account);
 
+        return _healthFactor(_account, _borrowed);
+    }
+
+    function _healthFactor(address _account, uint _borrowed) internal view returns (uint _hf, uint _lf) {
         if (_borrowed <= 0) return (type(uint).max, type(uint).max);
 
-        (uint _available, uint _total) = _collateralInUsd(_account);
+        (uint _available, uint _total) = _collateralInUSD(_account);
 
         _hf = _available * BASE_PRECISION / _borrowed;
         _lf = _total * liquidationThreshold / _borrowed;
     }
 
+    // TODO: Refactor with _borrowed and _collateral methods
     function availableCollateralForAsset(address _account, address _asset) external view returns (uint _available) {
         address[] memory _pools = piGlobal.collateralPools();
 
@@ -100,7 +117,7 @@ contract Oracle is PiAdmin {
         if (_assetPrice <= 0) revert InvalidFeed(_asset);
 
         for (uint i = 0; i < _pools.length; i++) {
-            IPool _pool = IPool(_pools[i]);
+            ICPool _pool = ICPool(_pools[i]);
             uint _price = _normalizedPrice(_pool.asset());
 
             if (_price <= 0) revert InvalidFeed(_pool.asset());
@@ -124,7 +141,7 @@ contract Oracle is PiAdmin {
     function _borrowedInAsset(address _account, address _asset) internal view returns (uint) {
         uint _assetPrice = _normalizedPrice(_asset);
         uint _assetDec   = IERC20Metadata(_asset).decimals();
-        uint _borrowed   = _borrowedInUsd(_account) * _assetPrice / BASE_PRECISION;
+        uint _borrowed   = _borrowedInUSD(_account) * _assetPrice / BASE_PRECISION;
 
         return _fixPrecision(BASE_DECIMALS, _assetDec, _borrowed);
     }
@@ -138,7 +155,7 @@ contract Oracle is PiAdmin {
             uint80 _answeredInRound
         ) =  priceFeeds[_asset].latestRoundData();
         if (_id < _answeredInRound) revert OldPrice();
-        if (_timestamp + toleration < block.timestamp) revert OldPrice();
+        if (_timestamp < block.timestamp - priceTimeToleration) revert OldPrice();
 
         // ChainLink always returng 8 decimals
         // Represent price in 18 decimals precisions
@@ -152,11 +169,11 @@ contract Oracle is PiAdmin {
         else                  return _amount / 10 ** (_dec - _assetDec);
     }
 
-    function _borrowedInUsd(address _account) internal view returns (uint _amount) {
+    function _borrowedInUSD(address _account) internal view returns (uint _amount) {
         address[] memory _lPools = piGlobal.liquidityPools();
 
         for (uint i = 0; i < _lPools.length; i++) {
-            IPool _pool = IPool(_lPools[i]);
+            ILPool _pool = ILPool(_lPools[i]);
             uint _price = _normalizedPrice(_pool.asset());
 
             if (_price <= 0) revert InvalidFeed(_pool.asset());
@@ -167,11 +184,11 @@ contract Oracle is PiAdmin {
         }
     }
 
-    function _collateralInUsd(address _account) internal view returns (uint _availableInUsd, uint _totalInUsd) {
+    function _collateralInUSD(address _account) internal view returns (uint _availableInUSD, uint _totalInUSD) {
         address[] memory _cPools = piGlobal.collateralPools();
 
         for (uint i = 0; i < _cPools.length; i++) {
-            IPool _pool = IPool(_cPools[i]);
+            ICPool _pool = ICPool(_cPools[i]);
             uint _price = _normalizedPrice(_pool.asset());
 
             if (_price <= 0) revert InvalidFeed(_pool.asset());
@@ -182,12 +199,67 @@ contract Oracle is PiAdmin {
             if (_bal <= 0 && _available <= 0) continue;
 
             // Collateral in USD in 18 decimals precision
-            _availableInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
-            _totalInUsd += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _bal) * _price / BASE_PRECISION;
+            _availableInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
+            _totalInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _bal) * _price / BASE_PRECISION;
         }
     }
 
-    function getLiquidableAmounts(address _account, address _liqPool, uint _amount) external view returns (uint, uint) {
+    // Return values are liquidableAmount(collateral asset) and debtToBePaid(debt asset)
+    function getLiquidableAmounts(address _account, address _liqPool) external view returns (uint _liquidableCollateral, uint _debtToBePaid) {
+        // First we check if the pool is expired and try to liquidate the whole debt
+        // msg.sender (from) address should be a collateralPool
+        ICPool _cPool = ICPool(msg.sender);
+        ILPool _lPool = ILPool(_liqPool);
 
+        uint _debt = _lPool.debt(_account);
+        uint _collateral = _cPool.balanceOf(_account);
+
+        if (_debt <= 0 || _collateral <= 0) revert NothingToLiquidate();
+
+        uint _cPrice = _normalizedPrice(_cPool.asset());
+        uint _lPrice = _normalizedPrice(_lPool.asset());
+
+        // Get debt in USD
+        uint _debtInUSD = _fixPrecision(_lPool.decimals(), BASE_DECIMALS, _debt) * _lPrice / BASE_PRECISION;
+
+        // Entire collateral must always cover the liquidation bonus, so we consider the "available collateral"
+        // as the collateral _less_ the bonus amount
+        uint _collateralWithBonus = _collateral - (_collateral * liquidationBonus / BASE_PRECISION);
+        uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_PRECISION, _collateralWithBonus) * _cPrice / BASE_PRECISION;
+
+        // If the pool is expired, the liquidable amount is the entire debt
+        if (_lPool.expired()) {
+            // If collateral without bonus in USD is greater or equal to debt we liquidate the entire debt
+            if (_availableCollateralInUSD >= _debtInUSD) _debtToBePaid = _debt;
+            // in other case we convert the available collateral in USD to the debt tokens
+            else _debtToBePaid = _availableCollateralInUSD * BASE_PRECISION / _lPrice;
+         } else {
+             // If the pool is not expired, then we check the liquidationFactor
+            uint _totalDebtInUSD = _borrowedInUSD(_account);
+
+            (, uint _lf) = _healthFactor(_account, _totalDebtInUSD);
+
+            // If the account is not liquidable, then revert
+            if (_lf <= liquidationThreshold) revert NothingToLiquidate();
+
+            // Get the expected LiquidationFactor with 10% more than liquidationThreshold
+            uint _expectedLF = liquidationThreshold + (liquidationThreshold / 10);
+            // get the liquidable debt to get 10% over the liquidationFactor
+            uint _liquidableDebtInUSD = _totalDebtInUSD * _expectedLF / _lf;
+
+            // If liquidableDebt is greater than available, only available will be liquidable...
+            if (_liquidableDebtInUSD > _availableCollateralInUSD) _liquidableDebtInUSD = _availableCollateralInUSD;
+
+            // If collateral without bonus in USD is greater or equal to debt we liquidate the entire debt
+            if (_liquidableDebtInUSD >= _debtInUSD) _debtToBePaid = _debt;
+              // in other case we convert the liquidable debt in USD to the debt tokens
+            else _debtToBePaid = _liquidableDebtInUSD * BASE_PRECISION / _lPrice;
+         }
+
+         // _debtToBePaid is the debt tokens to be liquidated so we need to convert it to
+         // collateral tokens via the prices
+         _liquidableCollateral = _debtToBePaid * _lPrice / _cPrice;
+         // have to add the liquidation bonus %
+         _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
     }
 }
