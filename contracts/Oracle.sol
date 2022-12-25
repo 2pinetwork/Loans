@@ -20,6 +20,7 @@ contract Oracle is PiAdmin {
 
     // Max of 50% of the total collateral in debt
     uint public liquidationThreshold = 0.5e18;
+    uint public liquidationExpectedHF = 0.6e18;
     uint public liquidationBonus = 0.01e18; // 1% bonus for liquidator
     uint public constant MAX_THREASHOLD = 1.0e18;
     uint public constant MIN_THREASHOLD = 0.20e18;
@@ -48,7 +49,7 @@ contract Oracle is PiAdmin {
 
     event NewPriceTimeToleration(uint _old, uint _new);
     event NewPriceFeed(address _token, address _feed);
-    event NewLiquidationThreshold(uint _old, uint _new);
+    event NewLiquidationThreshold(uint _oldLT, uint _newLT, uint _oldLEHF, uint _newLEHF);
     event NewLiquidationBonus(uint _old, uint _new);
 
     function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin {
@@ -60,13 +61,16 @@ contract Oracle is PiAdmin {
         priceTimeToleration = _newPriceTimeToleration;
     }
 
-    function setLiquidationThreshold(uint _newLT) external onlyAdmin {
-        if (_newLT > MAX_THREASHOLD) revert GreaterThan('MAX_THREASHOLD');
-        if (_newLT < MIN_THREASHOLD) revert LessThan('MIN_THREASHOLD');
+    function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin {
+        if (_newLT > MAX_THREASHOLD) revert GreaterThan('LT > MAX_THREASHOLD');
+        if (_newLT < MIN_THREASHOLD) revert LessThan('LT < MIN_THREASHOLD');
+        if (_newLEHF <= _newLT) revert LessThan('LExpectedHF < LT');
+        if (_newLEHF > MAX_THREASHOLD) revert GreaterThan('LExpectedHF > MAX_THREASHOLD');
 
-        emit NewLiquidationThreshold(liquidationThreshold, _newLT);
+        emit NewLiquidationThreshold(liquidationThreshold, _newLT, liquidationExpectedHF, _newLEHF);
 
         liquidationThreshold = _newLT;
+        liquidationExpectedHF = _newLEHF;
     }
 
     function setLiquidationBonus(uint _newLB) external onlyAdmin {
@@ -250,15 +254,10 @@ contract Oracle is PiAdmin {
             if (_hf >= liquidationThreshold) revert NothingToLiquidate();
 
             // Get the expected HF with 10% more than liquidationThreshold
-            uint _expectedHF = liquidationThreshold + (liquidationThreshold / 10);
-            console.log("Expected HF:", _expectedHF);
-            // get the liquidable debt
-            uint _liquidableDebtInUSD = _totalDebtInUSD - (_totalDebtInUSD * _hf / _expectedHF);
-            console.log("TotalDebt: ", _totalDebtInUSD, "LiquidableDebt:", _liquidableDebtInUSD);
+            uint _liquidableDebtInUSD = _totalDebtInUSD - (_totalDebtInUSD * _hf / liquidationExpectedHF);
 
             // If liquidableDebt is greater than available, only available will be liquidable...
             if (_liquidableDebtInUSD > _availableCollateralInUSD) _liquidableDebtInUSD = _availableCollateralInUSD;
-            console.log("New LiquidableDebt:", _liquidableDebtInUSD);
 
             // If collateral without bonus in USD is greater or equal to debt we liquidate the entire debt
             if (_liquidableDebtInUSD >= _debtInUSD) _debtToBePaid = _debt;
@@ -269,9 +268,7 @@ contract Oracle is PiAdmin {
          // _debtToBePaid is the debt tokens to be liquidated so we need to convert it to
          // collateral tokens via the prices
          _liquidableCollateral = _debtToBePaid * _lPrice / _cPrice;
-         console.log("Liquidable Collateral:", _liquidableCollateral);
          // have to add the liquidation bonus %
          _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
-         console.log("Liquidable Collateral W Bonus:", _liquidableCollateral);
     }
 }
