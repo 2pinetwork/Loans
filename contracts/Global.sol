@@ -11,6 +11,8 @@ contract Global is PiAdmin {
     EnumerableSet.AddressSet internal collateralPoolsSet;
     EnumerableSet.AddressSet internal liquidityPoolsSet;
 
+    address public oracle;
+
     error AlreadyExists();
     error UnknownPool();
     error ZeroAddress();
@@ -21,6 +23,10 @@ contract Global is PiAdmin {
     event NewLiquidityPool(address);
     event CollateralPoolRemoved(address);
     event LiquidityPoolRemoved(address);
+
+    function setOracle(address _oracle) external onlyAdmin {
+        oracle = _oracle;
+    }
 
     function addCollateralPool(address _pool) external onlyAdmin {
         if (_pool == address(0)) revert ZeroAddress();

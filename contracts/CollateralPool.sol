@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
-// import "hardhat/console.sol";
+
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -159,29 +160,35 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
     // _account is the wallet to be liquidated
     // _liquidityPool is the pool with the debt to be paid
-    // _amount is the current collateral pool amount to be liquidated
+    // _amount is the debt (liquidityPool) amount to be liquidated
     function liquidationCall(address _account, address _liquidityPool, uint _amount) public nonReentrant {
         (uint _liquidableCollateral, uint _liquidableDebt) = IOracle(piGlobal.oracle()).getLiquidableAmounts(_account, _liquidityPool);
 
-        if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
-        if (_amount > _liquidableCollateral) revert CantLiquidate("Greater Amount");
+        console.log("LiquidableCol:", _liquidableCollateral, "LiqDebt:", _liquidableDebt);
 
-        uint _debtToPay = 0;
+        if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
+
+        uint _collateralToBeUsed = _liquidableCollateral;
+
+        if (_amount >= _liquidableDebt) _amount = _liquidableDebt;
         // regla de 3 simple para obtener la cantidad de tokens a liquidar
-        if (_amount < _liquidableCollateral) _debtToPay = _amount * _liquidableDebt / _liquidableCollateral;
+        else _collateralToBeUsed = _amount * _liquidableCollateral / _liquidableDebt;
+        console.log("Collat: ", _collateralToBeUsed, "DebtToPay:", _amount);
 
         // JiC...
-        if (_debtToPay > _liquidableDebt) revert CantLiquidate("_amount pay too much debt");
+        if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount use too much collateral");
 
         // Get the burnable amount of tokens
-        uint _shares = _amount * cToken.totalSupply() / balance();
+        uint _shares = _collateralToBeUsed * cToken.totalSupply() / balance();
+
+        console.log("Shares burned:", _shares);
 
         // Burn liquidated account tokens
         cToken.burn(_account, _shares);
         // Transfer liquidable amount to liquidator
-        asset.safeTransfer(msg.sender, _amount);
+        asset.safeTransfer(msg.sender, _collateralToBeUsed);
 
         // Liquidator must repay
-        ILPool(_liquidityPool).repay(msg.sender, _account, _debtToPay);
+        ILPool(_liquidityPool).liquidate(msg.sender, _account, _amount);
     }
 }

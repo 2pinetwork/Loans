@@ -3,7 +3,7 @@ pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "./PiAdmin.sol";
 import "../interfaces/IChainLink.sol";
 import "../interfaces/IGlobal.sol";
@@ -225,7 +225,10 @@ contract Oracle is PiAdmin {
         // Entire collateral must always cover the liquidation bonus, so we consider the "available collateral"
         // as the collateral _less_ the bonus amount
         uint _collateralWithBonus = _collateral - (_collateral * liquidationBonus / BASE_PRECISION);
-        uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_PRECISION, _collateralWithBonus) * _cPrice / BASE_PRECISION;
+        uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_DECIMALS, _collateralWithBonus) * _cPrice / BASE_PRECISION;
+
+        console.log("DebtInUSD:", _debtInUSD);
+        console.log("availableInUSD:", _availableCollateralInUSD);
 
         // If the pool is expired, the liquidable amount is the entire debt
         if (_lPool.expired()) {
@@ -233,6 +236,8 @@ contract Oracle is PiAdmin {
             if (_availableCollateralInUSD >= _debtInUSD) _debtToBePaid = _debt;
             // in other case we convert the available collateral in USD to the debt tokens
             else _debtToBePaid = _availableCollateralInUSD * BASE_PRECISION / _lPrice;
+
+            console.log("[C Oracle] Debt: ", _debt, "Debt To be paid:", _debtToBePaid);
          } else {
              // If the pool is not expired, then we check the liquidationFactor
             uint _totalDebtInUSD = _borrowedInUSD(_account);

@@ -78,7 +78,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     error EXPIRED_POOL();
 
     modifier notExpired() {
-        if (dueDate <= block.timestamp) revert EXPIRED_POOL();
+        if (expired()) revert EXPIRED_POOL();
         _;
     }
 
@@ -146,7 +146,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         treasury = _treasury;
     }
 
-    function expired() external view returns (bool) {
+    function expired() public view returns (bool) {
         return block.timestamp > dueDate;
     }
 
@@ -325,8 +325,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
                 }
             }
 
-            // Update last user interaction
-            _timestamps[_account] = uint40(block.timestamp);
+            // Update last user interaction (or ending timestamp)
+            uint _newTs = block.timestamp;
+            if (_newTs > dueDate) _newTs = dueDate;
+            _timestamps[_account] = uint40(_newTs);
         }
 
         // Take the payment
