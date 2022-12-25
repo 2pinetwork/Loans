@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -228,9 +228,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     /*********** BORROW FUNCTIONS  *********/
 
     function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
+        console.log('LiquidityPool.sol:230');
         if (_amount <= 0) revert Errors.ZeroAmount();
         if (_amount > balance()) revert Errors.InsufficientLiquidity();
+        console.log('LiquidityPool.sol:233');
         _checkBorrowAmount(_amount);
+        console.log('LiquidityPool.sol:235');
 
         address _account = msg.sender;
 

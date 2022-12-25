@@ -2,7 +2,7 @@
 pragma solidity 0.8.17;
 
 contract PriceFeedMock {
-    int256 private price;
+    int256 public price;
 
     constructor(int256 _price) {
         price = _price;

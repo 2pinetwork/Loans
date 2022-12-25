@@ -43,6 +43,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
     event NewCollateralRatio(uint _oldRatio, uint _newRatio);
     event NewPiGlobal(address _old, address _new);
+    event LiquidationCall(address _liquidator, address _liquidated, uint _collateral, address _liquidityPool, uint _debt);
 
     function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
         if (_collateralRatio == collateralRatio) revert SameRatio();
@@ -162,9 +163,11 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     // _liquidityPool is the pool with the debt to be paid
     // _amount is the debt (liquidityPool) amount to be liquidated
     function liquidationCall(address _account, address _liquidityPool, uint _amount) public nonReentrant {
-        (uint _liquidableCollateral, uint _liquidableDebt) = IOracle(piGlobal.oracle()).getLiquidableAmounts(_account, _liquidityPool);
+        IOracle _oracle = IOracle(piGlobal.oracle());
 
-        console.log("LiquidableCol:", _liquidableCollateral, "LiqDebt:", _liquidableDebt);
+        (uint _liquidableCollateral, uint _liquidableDebt) = _oracle.getLiquidableAmounts(_account, _liquidityPool);
+
+        // console.log("[C] LiquidableCol:", _liquidableCollateral, "LiqDebt:", _liquidableDebt);
 
         if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
 
@@ -173,15 +176,15 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         if (_amount >= _liquidableDebt) _amount = _liquidableDebt;
         // regla de 3 simple para obtener la cantidad de tokens a liquidar
         else _collateralToBeUsed = _amount * _liquidableCollateral / _liquidableDebt;
-        console.log("Collat: ", _collateralToBeUsed, "DebtToPay:", _amount);
+        // console.log("Collat: ", _collateralToBeUsed, "DebtToPay:", _amount);
 
         // JiC...
         if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount use too much collateral");
 
+        (uint _hf, ) = _oracle.healthFactor(_account);
+
         // Get the burnable amount of tokens
         uint _shares = _collateralToBeUsed * cToken.totalSupply() / balance();
-
-        console.log("Shares burned:", _shares);
 
         // Burn liquidated account tokens
         cToken.burn(_account, _shares);
@@ -190,5 +193,11 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
         // Liquidator must repay
         ILPool(_liquidityPool).liquidate(msg.sender, _account, _amount);
+
+        (uint _newHf, ) = _oracle.healthFactor(_account);
+
+        if (_newHf <= _hf) revert CantLiquidate("HF is lower than before");
+
+        emit LiquidationCall(msg.sender, _account, _collateralToBeUsed, _liquidityPool, _amount);
     }
 }

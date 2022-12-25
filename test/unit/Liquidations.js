@@ -65,7 +65,7 @@ const setupCollateral = async function (fixtures) {
   await expect(cPool.connect(bob)['deposit(uint256)'](depositAmount)).to.emit(cPool, 'Deposit')
 
   // let's use 1:1 collateral-borrow
-  await expect(cPool.setCollateralRatio(1.0e18 + '')).to.emit(cPool, 'NewCollateralRatio')
+  await expect(cPool.setCollateralRatio(0.2e18 + '')).to.emit(cPool, 'NewCollateralRatio')
 
   expect(await token.balanceOf(bob.address)).to.be.equal(0)
 }
@@ -122,6 +122,10 @@ describe('Liquidation', async function () {
   }
 
   describe('Liquidation', async function () {
+    afterEach(async function () {
+      await network.provider.send("evm_setAutomine", [true]);
+    })
+
     it('should work for due pool with same token', async function () {
       const fixtures = await loadFixture(deploy)
 
@@ -217,6 +221,84 @@ describe('Liquidation', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(
         cBalance.sub(liquidableCollateral)
       )
+    })
+
+    it.only('should work for low liquidation factor with diff token', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { alice, bob, cPool, cToken, globalC, oracle, token, LPool, TokenFeed } = fixtures
+
+      const token2    = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
+      const token2Feed = await TokenFeed.deploy(3e8)
+      const dueDate   = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 3600 * 1000)
+      const lPool     = await LPool.deploy(token2.address, dueDate)
+
+      await Promise.all([
+        cPool.setPiGlobal(globalC.address),
+        globalC.addLiquidityPool(lPool.address),
+        globalC.setOracle(oracle.address),
+        lPool.setOracle(oracle.address),
+        oracle.addPriceOracle(token2.address, token2Feed.address),
+        oracle.setLiquidationThreshold(0.75e18 + ''),
+        token2.mint(alice.address, 100e18 + ''),
+        token2.mint(lPool.address, 100e18 + ''),
+        setupCollateral({...fixtures, lPool}),
+      ])
+
+      const cBalance = await cToken.balanceOf(bob.address)
+      const tBalance = await token2.balanceOf(alice.address)
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      console.log('Liquidations.js:250');
+      // Skip low HF & LF...
+      // 13 tokenPrice, 3 token2Price, half borrow capacity
+      const borrowAmount = depositAmount.mul(13).div(3).div(5)
+      await lPool.connect(bob).borrow(borrowAmount)
+
+      // Approve for repay
+      await token2.connect(alice).approve(lPool.address, 100e18 + '')
+
+      // Mine 10 blocks then freeze automining
+      await mine(10)
+      // await network.provider.send("evm_setAutomine", [false]);
+
+      let [hf] = await oracle.healthFactor(bob.address)
+      const LT = await oracle.liquidationThreshold()
+      console.log("[T] antes de cambiar el precio", hf / 1e18)
+
+      expect(hf).to.be.above(LT)
+
+      // get debt price to be liquidated
+      let wantedPrice = (await token2Feed.price()).mul(hf).div(LT.mul(99).div(100))
+
+      await token2Feed.setPrice(wantedPrice); // double debt price
+      [hf] = await oracle.healthFactor(bob.address);
+
+      expect(hf).to.be.below(LT)
+
+      const debt = await lPool['debt(address)'](bob.address)
+      const maxLiquidable = debt.sub(debt.mul(hf).div(LT.add(LT.div(10))))
+      // console.log("[T] Debt:", debt)
+      // console.log("[T] Max liq:", maxLiquidable)
+
+      // Alice doesn't have any tokens before liquidation call
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      // should only liquidate max amount
+      console.log("HF antes:", (await oracle.healthFactor(bob.address))[0] / 1e18);
+      await cPool.connect(alice).liquidationCall(bob.address, lPool.address, debt)
+      console.log("HF despues:", (await oracle.healthFactor(bob.address))[0] / 1e18);
+
+      // with 1% bonus in collateral amount
+      const debtInCollateral = maxLiquidable.mul(3).div(13)
+      const liquidableCollateral = debtInCollateral.add(debtInCollateral.div(100))
+
+      expect(await lPool['debt(address)'](bob.address)).to.be.within(debt.sub(debt.div(10)), debt)
+      // expect(await token.balanceOf(alice.address)).to.be.equal(liquidableCollateral) // 1% of bonus in collateral amount
+      // expect(await token2.balanceOf(alice.address)).to.be.equal(tBalance.sub(debt)) // Pay debt with own balance
+      // expect(await cToken.balanceOf(bob.address)).to.be.equal(
+      //   cBalance.sub(liquidableCollateral)
+      // )
     })
   })
 })

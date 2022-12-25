@@ -102,6 +102,7 @@ contract Oracle is PiAdmin {
         if (_borrowed <= 0) return (type(uint).max, type(uint).max);
 
         (uint _available, uint _total) = _collateralInUSD(_account);
+        // console.log("Coll:", _total, "Borr:", _borrowed);
 
         _hf = _available * BASE_PRECISION / _borrowed;
         _lf = _total * liquidationThreshold / _borrowed;
@@ -135,7 +136,7 @@ contract Oracle is PiAdmin {
 
         uint _borrowed = _borrowedInAsset(_account, _asset);
 
-        (_available > _borrowed) ? (_available -= _borrowed) : (_available = 0);
+        (_available >= _borrowed) ? (_available -= _borrowed) : (_available = 0);
     }
 
     function _borrowedInAsset(address _account, address _asset) internal view returns (uint) {
@@ -241,19 +242,23 @@ contract Oracle is PiAdmin {
          } else {
              // If the pool is not expired, then we check the liquidationFactor
             uint _totalDebtInUSD = _borrowedInUSD(_account);
+            console.log("totalDebtInUSD:", _totalDebtInUSD);
 
-            (, uint _lf) = _healthFactor(_account, _totalDebtInUSD);
+            (uint _hf, ) = _healthFactor(_account, _totalDebtInUSD);
 
             // If the account is not liquidable, then revert
-            if (_lf <= liquidationThreshold) revert NothingToLiquidate();
+            if (_hf >= liquidationThreshold) revert NothingToLiquidate();
 
-            // Get the expected LiquidationFactor with 10% more than liquidationThreshold
-            uint _expectedLF = liquidationThreshold + (liquidationThreshold / 10);
-            // get the liquidable debt to get 10% over the liquidationFactor
-            uint _liquidableDebtInUSD = _totalDebtInUSD * _expectedLF / _lf;
+            // Get the expected HF with 10% more than liquidationThreshold
+            uint _expectedHF = liquidationThreshold + (liquidationThreshold / 10);
+            console.log("Expected HF:", _expectedHF);
+            // get the liquidable debt
+            uint _liquidableDebtInUSD = _totalDebtInUSD - (_totalDebtInUSD * _hf / _expectedHF);
+            console.log("TotalDebt: ", _totalDebtInUSD, "LiquidableDebt:", _liquidableDebtInUSD);
 
             // If liquidableDebt is greater than available, only available will be liquidable...
             if (_liquidableDebtInUSD > _availableCollateralInUSD) _liquidableDebtInUSD = _availableCollateralInUSD;
+            console.log("New LiquidableDebt:", _liquidableDebtInUSD);
 
             // If collateral without bonus in USD is greater or equal to debt we liquidate the entire debt
             if (_liquidableDebtInUSD >= _debtInUSD) _debtToBePaid = _debt;
@@ -264,7 +269,9 @@ contract Oracle is PiAdmin {
          // _debtToBePaid is the debt tokens to be liquidated so we need to convert it to
          // collateral tokens via the prices
          _liquidableCollateral = _debtToBePaid * _lPrice / _cPrice;
+         console.log("Liquidable Collateral:", _liquidableCollateral);
          // have to add the liquidation bonus %
          _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
+         console.log("Liquidable Collateral W Bonus:", _liquidableCollateral);
     }
 }
