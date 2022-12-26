@@ -79,7 +79,7 @@ describe('Oracle', async function () {
       await oracle.setPriceTimeToleration(10)
 
       await expect(oracle.setPriceTimeToleration(10)).to.be.revertedWithCustomError(
-        oracle, 'SamePriceTimeToleration'
+        oracle, 'SameValue'
       )
     })
   })

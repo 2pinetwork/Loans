@@ -228,12 +228,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     /*********** BORROW FUNCTIONS  *********/
 
     function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
-        console.log('LiquidityPool.sol:230');
         if (_amount <= 0) revert Errors.ZeroAmount();
         if (_amount > balance()) revert Errors.InsufficientLiquidity();
-        console.log('LiquidityPool.sol:233');
         _checkBorrowAmount(_amount);
-        console.log('LiquidityPool.sol:235');
 
         address _account = msg.sender;
 

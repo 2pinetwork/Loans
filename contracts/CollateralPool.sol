@@ -167,8 +167,6 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
         (uint _liquidableCollateral, uint _liquidableDebt) = _oracle.getLiquidableAmounts(_account, _liquidityPool);
 
-        // console.log("[C] LiquidableCol:", _liquidableCollateral, "LiqDebt:", _liquidableDebt);
-
         if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
 
         uint _collateralToBeUsed = _liquidableCollateral;
@@ -176,7 +174,6 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         if (_amount >= _liquidableDebt) _amount = _liquidableDebt;
         // regla de 3 simple para obtener la cantidad de tokens a liquidar
         else _collateralToBeUsed = _amount * _liquidableCollateral / _liquidableDebt;
-        // console.log("Collat: ", _collateralToBeUsed, "DebtToPay:", _amount);
 
         // JiC...
         if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount use too much collateral");
