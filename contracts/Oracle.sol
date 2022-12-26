@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "hardhat/console.sol";
 import "./PiAdmin.sol";
 import "../interfaces/IChainLink.sol";
-import "../interfaces/IGlobal.sol";
+import "../interfaces/IPiGlobal.sol";
 import "../interfaces/IPool.sol";
 
 contract Oracle is PiAdmin {
@@ -28,7 +28,7 @@ contract Oracle is PiAdmin {
     uint public constant MIN_THREASHOLD = 0.20e18;
     uint public constant MAX_LIQUIDATION_BONUS = 0.20e18; // 20% is a huge bonus...
 
-    IGlobal public immutable piGlobal;
+    IPiGlobal public immutable piGlobal;
 
     error InvalidFeed(address);
     error MaxPriceTimeToleration();
@@ -39,7 +39,7 @@ contract Oracle is PiAdmin {
     error LessThan(string);
     error NothingToLiquidate();
 
-    constructor(IGlobal _global) {
+    constructor(IPiGlobal _global) {
         // at least check the contract
         _global.collateralPools();
         _global.liquidityPools();

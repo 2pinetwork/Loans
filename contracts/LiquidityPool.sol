@@ -10,20 +10,23 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
-import {Oracle}  from "./Oracle.sol";
+
+import "../interfaces/IOracle.sol";
+import "../interfaces/IPiGlobal.sol";
 
 library Errors {
-    error DUE_DATE_IN_THE_PAST();
+    error DueDateInThePast();
     error ZeroAddress();
     error SameValue();
-    error InvalidOracle();
     error InsufficientFunds();
     error NoDebt();
     error ZeroShares();
     error ZeroAmount();
     error InsufficientLiquidity();
-    error GreaterThan(string _constant);
+    error GreaterThan(string);
     error AlreadyInitialized();
+    error UnknownSender();
+    error ExpiredPool();
 }
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
@@ -36,8 +39,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     DToken public immutable dToken;
     // Debt Interest token
     DToken public immutable iToken;
-    // Oracle
-    Oracle public oracle;
+    // PiGlobal
+    IPiGlobal public immutable piGlobal;
 
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
@@ -59,8 +62,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Fees to be paid by borrowers
     mapping(address => uint) public remainingOriginatorFee;
 
-    constructor(IERC20Metadata _asset, uint _dueDate) {
-        if (_dueDate <= block.timestamp) revert Errors.DUE_DATE_IN_THE_PAST();
+    constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
+        if (_dueDate <= block.timestamp) revert Errors.DueDateInThePast();
+        if (address(_piGlobal) == address(0)) revert Errors.ZeroAddress();
+        if (_piGlobal.oracle() == address(0)) revert Errors.ZeroAddress();
 
         asset = _asset;
         dueDate = _dueDate;
@@ -73,12 +78,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         iToken = new DToken(asset);
 
         treasury = msg.sender;
+        piGlobal = _piGlobal;
     }
 
-    error EXPIRED_POOL();
-
     modifier notExpired() {
-        if (expired()) revert EXPIRED_POOL();
+        if (expired()) revert Errors.ExpiredPool();
+        _;
+    }
+
+    modifier fromCollateralPool {
+        if (! piGlobal.isValidCollateralPool(msg.sender)) revert Errors.UnknownSender();
         _;
     }
 
@@ -127,16 +136,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         piFee = _piFee;
     }
 
-    function setOracle(address _oracle) external onlyAdmin {
-        if (_oracle == address(0)) revert Errors.ZeroAddress();
-        if (_oracle == address(oracle)) revert Errors.SameValue();
-        // if (Oracle(_oracle).priceFeeds(address(asset)) == address(0)) revert Errors.InvalidOracle();
-
-        emit NewOracle(address(oracle), _oracle);
-
-        oracle = Oracle(_oracle);
-    }
-
     function setTreasury(address _treasury) external onlyAdmin {
         if (_treasury == address(0)) revert Errors.ZeroAddress();
         if (_treasury == treasury) revert Errors.SameValue();
@@ -148,6 +147,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function expired() public view returns (bool) {
         return block.timestamp > dueDate;
+    }
+
+    function balance() public view returns (uint) {
+        return asset.balanceOf(address(this));
     }
 
     /*********** LIQUIDITY FUNCTIONS ***********/
@@ -185,16 +188,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit Deposit(msg.sender, _onBehalfOf, _amount, _shares);
     }
 
-    /**
-     * @dev Withdraws an `amount` of underlying asset from the reserve, burning the equivalent aTokens owned
-     * E.g. User has 100 aUSDC, calls withdraw() and receives 100 USDC, burning the 100 aUSDC
-     * @param _shares The shares to be withdrawn
-     *   - Send the value type(uint).max in order to withdraw the whole aToken balance
-     * @param _to Address that will receive the underlying, same as msg.sender if the user
-     *   wants to receive it on his own wallet, or a different address if the beneficiary is a
-     *   different wallet
-     * @return The final amount withdrawn
-     **/
     function withdraw(uint _shares, address _to) external nonReentrant returns (uint) {
         return _withdraw(_shares, _to);
     }
@@ -212,6 +205,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         uint _amount = (balance() * _shares) / lToken.totalSupply();
 
+        if (_amount > balance()) revert Errors.InsufficientLiquidity();
+
         lToken.burn(msg.sender, _shares);
 
         asset.safeTransfer(_to, _amount);
@@ -221,20 +216,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return _amount;
     }
 
-    function balance() public view returns (uint) {
-        return asset.balanceOf(address(this));
-    }
-
     /*********** BORROW FUNCTIONS  *********/
 
     function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
         if (_amount <= 0) revert Errors.ZeroAmount();
         if (_amount > balance()) revert Errors.InsufficientLiquidity();
         _checkBorrowAmount(_amount);
-
-        address _account = msg.sender;
-
-        asset.safeTransfer(_account, _amount);
 
         // Originator fee is based on the borrowed amount,
         // and will be prioritized over the interest fee when the debt is paid.
@@ -244,28 +231,30 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         // New amount + interest tokens to be minted since the last interaction
         // iToken mint should be first to prevent "new dToken mint" to get in
         // the debt calc
-        uint _interestTokens = _debtTokenDiff(_account);
+        uint _interestTokens = _debtTokenDiff(msg.sender);
         // originatorFee is directly added to the interest to prevent the borrower
         // receive less than expected. Instead the account will have to pay the interest for it
         _interestTokens += _originatorFeeAmount;
 
-        iToken.mint(_account, _interestTokens);
-        dToken.mint(_account, _amount);
+        // Mint interest tokens
+        iToken.mint(msg.sender, _interestTokens);
+        // Mint real debt tokens
+        dToken.mint(msg.sender, _amount);
 
-        _timestamps[_account] = uint40(block.timestamp);
+        // Set last interaction
+        _timestamps[msg.sender] = uint40(block.timestamp);
 
-        emit Borrow(_account, _amount);
+        asset.safeTransfer(msg.sender, _amount);
+
+        emit Borrow(msg.sender, _amount);
     }
 
     function repay(uint _amount) external nonReentrant {
         _repay(msg.sender, msg.sender, _amount);
     }
 
-    modifier fromCollateralPool {
-        // require(msg.sender == address(collateralPool), "Only collateral pool");
-        _;
-    }
 
+    // Only collateralPools can call this
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
     }
@@ -382,7 +371,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function _checkBorrowAmount(uint _amount) internal view {
-        uint _available = oracle.availableCollateralForAsset(msg.sender, address(asset));
+        uint _available = _oracle().availableCollateralForAsset(msg.sender, address(asset));
 
         if (_amount > _available) revert Errors.InsufficientFunds();
     }
@@ -422,5 +411,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         asset.safeTransfer(treasury, _fee);
 
         emit CollectedFee(_fee);
+    }
+
+    function _oracle() internal view returns (IOracle) {
+        return IOracle(piGlobal.oracle());
     }
 }

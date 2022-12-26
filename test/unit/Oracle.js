@@ -6,24 +6,27 @@ const { ZERO_ADDRESS } = require('./helpers').constants
 describe('Oracle', async function () {
   const deploy = async function () {
     const dueDate        = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+    const piGlobal       = await (await ethers.getContractFactory('PiGlobal')).deploy()
     const [, alice, bob] = await ethers.getSigners()
     const Token          = await ethers.getContractFactory('ERC20Mintable')
     const token          = await Token.deploy('t', 't')
     const CPool          = await ethers.getContractFactory('CollateralPool')
     const LPool          = await ethers.getContractFactory('LiquidityPool')
-    const cPool          = await CPool.deploy(token.address)
-    const lPool          = await LPool.deploy(token.address, dueDate)
-    const cToken         = await (await ethers.getContractFactory('CToken')).attach(await cPool.cToken())
-    const lToken         = await (await ethers.getContractFactory('LToken')).attach(await lPool.lToken())
-    const globalC        = await (await ethers.getContractFactory('Global')).deploy()
     const Oracle         = await ethers.getContractFactory('Oracle')
-    const oracle         = await Oracle.deploy(globalC.address)
-    const TokenFeed      = await ethers.getContractFactory('PriceFeedMock')
-    const tokenFeed      = await TokenFeed.deploy(13e8)
+    const oracle         = await Oracle.deploy(piGlobal.address)
+
+    await piGlobal.setOracle(oracle.address)
+
+    const cPool     = await CPool.deploy(piGlobal.address, token.address)
+    const lPool     = await LPool.deploy(piGlobal.address, token.address, dueDate)
+    const cToken    = await (await ethers.getContractFactory('CToken')).attach(await cPool.cToken())
+    const lToken    = await (await ethers.getContractFactory('LToken')).attach(await lPool.lToken())
+    const TokenFeed = await ethers.getContractFactory('PriceFeedMock')
+    const tokenFeed = await TokenFeed.deploy(13e8)
 
     await Promise.all([
-      globalC.addCollateralPool(cPool.address),
-      globalC.addLiquidityPool(lPool.address),
+      piGlobal.addCollateralPool(cPool.address),
+      piGlobal.addLiquidityPool(lPool.address),
       // let's use 1:1 collateral-borrow
       cPool.setCollateralRatio(1.0e18 + ''),
     ])
@@ -37,7 +40,7 @@ describe('Oracle', async function () {
       bob,
       cPool,
       cToken,
-      globalC,
+      piGlobal,
       lPool,
       lToken,
       oracle,
@@ -48,12 +51,12 @@ describe('Oracle', async function () {
 
   describe('Deployment', async function () {
     it('Should work', async function () {
-      const { globalC, Oracle } = await loadFixture(deploy)
+      const { piGlobal, Oracle } = await loadFixture(deploy)
 
-      const oracle = await Oracle.deploy(globalC.address)
+      const oracle = await Oracle.deploy(piGlobal.address)
 
       expect(oracle.address).to.not.be.equal(ZERO_ADDRESS)
-      expect(await oracle.piGlobal()).to.be.equal(globalC.address)
+      expect(await oracle.piGlobal()).to.be.equal(piGlobal.address)
       expect(await oracle.priceTimeToleration()).to.be.equal(0)
       expect(await oracle.MAX_PRICE_TIME_TOLERATION()).to.be.equal(24 * 3600)
       expect(await oracle.BASE_PRECISION()).to.be.equal(1e18 + '')
