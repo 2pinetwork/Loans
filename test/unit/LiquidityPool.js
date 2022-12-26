@@ -1030,7 +1030,7 @@ describe('Liquidity Pool', async function () {
     it('Should work for expired pool', async function () {
         const fixtures = await loadFixture(deploy)
 
-        const { bob, piGlobal, oracle, token, LPool } = fixtures
+        const { bob, piGlobal, token, LPool } = fixtures
 
         const dueDate = (await ethers.provider.getBlock()).timestamp + 20
         const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
