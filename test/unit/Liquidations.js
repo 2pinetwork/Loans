@@ -259,7 +259,7 @@ describe('Liquidation', async function () {
       // await mine(10)
       // await network.provider.send("evm_setAutomine", [false]);
 
-      const [hf] = await oracle.healthFactor(bob.address)
+      const hf = await oracle.healthFactor(bob.address)
       const LT = await oracle.liquidationThreshold()
 
       expect(hf).to.be.above(LT)
@@ -269,7 +269,7 @@ describe('Liquidation', async function () {
 
       await token2Feed.setPrice(wantedPrice);
 
-      expect((await oracle.healthFactor(bob.address))[0]).to.be.below(LT)
+      expect(await oracle.healthFactor(bob.address)).to.be.below(LT)
 
       const debt = await lPool['debt(address)'](bob.address)
 
@@ -277,7 +277,7 @@ describe('Liquidation', async function () {
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
       // should only liquidate max amount
-      expect((await oracle.healthFactor(bob.address))[0]).to.be.below(0.75e18 + '')
+      expect(await oracle.healthFactor(bob.address)).to.be.below(0.75e18 + '')
       await expect(
         cPool.connect(alice).liquidationCall(bob.address, lPool.address, debt)
       ).to.emit(
@@ -285,7 +285,7 @@ describe('Liquidation', async function () {
       )
 
       // LiquidationTheshold
-      expect((await oracle.healthFactor(bob.address))[0]).to.be.within(0.75e18 + '', 0.85e18 + '')
+      expect(await oracle.healthFactor(bob.address)).to.be.within(0.75e18 + '', 0.85e18 + '')
       expect(await cToken.balanceOf(bob.address)).to.be.within(depositAmount.mul(95).div(100), depositAmount)
       expect(await lPool['debt(address)'](bob.address)).to.be.within(debt.mul(85).div(100), debt.mul(95).div(100))
       expect(await token.balanceOf(alice.address)).to.be.within(0, depositAmount.mul(5).div(100))

@@ -96,20 +96,16 @@ contract Oracle is PiAdmin {
     }
 
     // HF, liquidation Threadhold
-    function healthFactor(address _account) public view returns (uint _hf, uint _lf) {
+    function healthFactor(address _account) public view returns (uint) {
         uint _borrowed = _borrowedInUSD(_account);
 
         return _healthFactor(_account, _borrowed);
     }
 
-    function _healthFactor(address _account, uint _borrowed) internal view returns (uint _hf, uint _lf) {
-        if (_borrowed <= 0) return (type(uint).max, type(uint).max);
+    function _healthFactor(address _account, uint _borrowed) internal view returns (uint) {
+        if (_borrowed <= 0) return type(uint).max;
 
-        (uint _available, uint _total) = _collateralInUSD(_account);
-        // console.log("Coll:", _total, "Borr:", _borrowed);
-
-        _hf = _available * BASE_PRECISION / _borrowed;
-        _lf = _total * liquidationThreshold / _borrowed;
+        return _collateralInUSD(_account) * BASE_PRECISION / _borrowed;
     }
 
     // TODO: Refactor with _borrowed and _collateral methods
@@ -189,7 +185,7 @@ contract Oracle is PiAdmin {
         }
     }
 
-    function _collateralInUSD(address _account) internal view returns (uint _availableInUSD, uint _totalInUSD) {
+    function _collateralInUSD(address _account) internal view returns (uint _availableInUSD) {
         address[] memory _cPools = piGlobal.collateralPools();
 
         for (uint i = 0; i < _cPools.length; i++) {
@@ -205,7 +201,6 @@ contract Oracle is PiAdmin {
 
             // Collateral in USD in 18 decimals precision
             _availableInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
-            _totalInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _bal) * _price / BASE_PRECISION;
         }
     }
 
@@ -232,23 +227,17 @@ contract Oracle is PiAdmin {
         uint _collateralWithBonus = _collateral - (_collateral * liquidationBonus / BASE_PRECISION);
         uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_DECIMALS, _collateralWithBonus) * _cPrice / BASE_PRECISION;
 
-        console.log("DebtInUSD:", _debtInUSD);
-        console.log("availableInUSD:", _availableCollateralInUSD);
-
         // If the pool is expired, the liquidable amount is the entire debt
         if (_lPool.expired()) {
             // If collateral without bonus in USD is greater or equal to debt we liquidate the entire debt
             if (_availableCollateralInUSD >= _debtInUSD) _debtToBePaid = _debt;
             // in other case we convert the available collateral in USD to the debt tokens
             else _debtToBePaid = _availableCollateralInUSD * BASE_PRECISION / _lPrice;
-
-            console.log("[C Oracle] Debt: ", _debt, "Debt To be paid:", _debtToBePaid);
          } else {
              // If the pool is not expired, then we check the liquidationFactor
             uint _totalDebtInUSD = _borrowedInUSD(_account);
-            console.log("totalDebtInUSD:", _totalDebtInUSD);
 
-            (uint _hf, ) = _healthFactor(_account, _totalDebtInUSD);
+            uint _hf = _healthFactor(_account, _totalDebtInUSD);
 
             // If the account is not liquidable, then revert
             if (_hf >= liquidationThreshold) revert NothingToLiquidate();

@@ -1085,24 +1085,21 @@ describe('Liquidity Pool', async function () {
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
 
-      let [hf, lt] = await oracle.healthFactor(bob.address);
+      let hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.99e18 + '', 1.01e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '');
 
       await cPool.setCollateralRatio(0.5e18 + '');
 
-      [hf, lt] = await oracle.healthFactor(bob.address);
+      hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.49e18 + '', 0.5e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
 
       await cPool.setCollateralRatio(0.3e18 + '');
 
-      [hf, lt] = await oracle.healthFactor(bob.address);
+      hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.29e18 + '', 0.3e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
     })
   })
 })

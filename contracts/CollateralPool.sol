@@ -181,7 +181,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         // JiC...
         if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount use too much collateral");
 
-        (uint _hf, ) = _oracle.healthFactor(_account);
+        uint _hf = _oracle.healthFactor(_account);
 
         // Get the burnable amount of tokens
         uint _shares = _collateralToBeUsed * cToken.totalSupply() / balance();
@@ -194,9 +194,8 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         // Liquidator must repay
         ILPool(_liquidityPool).liquidate(msg.sender, _account, _amount);
 
-        (uint _newHf, ) = _oracle.healthFactor(_account);
-
-        if (_newHf <= _hf) revert CantLiquidate("HF is lower than before");
+        // Recheck HF after liquidation is not less than before
+        if (_oracle.healthFactor(_account) <= _hf) revert CantLiquidate("HF is lower than before");
 
         emit LiquidationCall(msg.sender, _account, _collateralToBeUsed, _liquidityPool, _amount);
     }
