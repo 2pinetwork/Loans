@@ -4,8 +4,9 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./PiAdmin.sol";
+import "../interfaces/IOracle.sol";
 
-contract Global is PiAdmin {
+contract PiGlobal is PiAdmin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     EnumerableSet.AddressSet internal collateralPoolsSet;
@@ -16,6 +17,7 @@ contract Global is PiAdmin {
     error AlreadyExists();
     error UnknownPool();
     error ZeroAddress();
+    error WrongOracle();
 
     event NewOracle(address _old, address _new);
     event NewCollateralPool(address);
@@ -25,6 +27,7 @@ contract Global is PiAdmin {
 
     function setOracle(address _oracle) external onlyAdmin {
         if (_oracle == address(0)) revert ZeroAddress();
+        if (IOracle(_oracle).piGlobal() != address(this)) revert WrongOracle();
 
         emit NewOracle(oracle, _oracle);
 
@@ -71,5 +74,9 @@ contract Global is PiAdmin {
 
     function liquidityPools() external view returns (address[] memory _pools) {
         _pools = liquidityPoolsSet.values();
+    }
+
+    function isValidCollateralPool(address _pool) external view returns (bool) {
+        return collateralPoolsSet.contains(_pool);
     }
 }

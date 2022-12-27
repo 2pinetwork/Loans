@@ -13,7 +13,7 @@ contract CToken is ERC20 {
         string(abi.encodePacked("2pi-C-", _asset.symbol()))
     ) {
         asset = _asset;
-        pool = msg.sender;
+        pool = msg.sender; // creator
     }
 
     modifier onlyPool() {

@@ -4,26 +4,28 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 const { mine } = require('./helpers')
 
 const deployOracle = async function () {
-  const GlobalC = await ethers.getContractFactory('Global')
-  const Oracle  = await ethers.getContractFactory('Oracle')
-  const globalC = await GlobalC.deploy()
-  const oracle  = await Oracle.deploy(globalC.address)
+  const PiGlobal = await ethers.getContractFactory('PiGlobal')
+  const Oracle   = await ethers.getContractFactory('Oracle')
+  const piGlobal = await PiGlobal.deploy()
+  const oracle   = await Oracle.deploy(piGlobal.address)
 
-  return { globalC, oracle }
+  await piGlobal.setOracle(oracle.address)
+
+  return { piGlobal, oracle }
 }
 
 const setupCollateral = async function (fixtures) {
   const {
     bob,
     cPool,
-    globalC,
+    piGlobal,
     oracle,
     token,
     tokenFeed
   } = fixtures
 
   await oracle.addPriceOracle(token.address, tokenFeed.address)
-  await globalC.addCollateralPool(cPool.address)
+  await piGlobal.addCollateralPool(cPool.address)
 
   const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
@@ -43,7 +45,7 @@ const setupCollateral = async function (fixtures) {
 describe('Liquidation', async function () {
   const deploy = async function () {
     const [, alice, bob, treasury] = await ethers.getSigners()
-    const { globalC, oracle }      = await deployOracle()
+    const { piGlobal, oracle }     = await deployOracle()
 
     const dueDate    = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
     const token      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
@@ -51,8 +53,8 @@ describe('Liquidation', async function () {
     const CPool      = await ethers.getContractFactory('CollateralPool')
     const LToken     = await ethers.getContractFactory('LToken')
     const DToken     = await ethers.getContractFactory('DToken')
-    const lPool      = await LPool.deploy(token.address, dueDate)
-    const cPool      = await CPool.deploy(token.address)
+    const lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
+    const cPool      = await CPool.deploy(piGlobal.address, token.address)
     const lToken     = await LToken.attach(await lPool.lToken())
     const dToken     = await DToken.attach(await lPool.dToken())
     const iToken     = await DToken.attach(await lPool.iToken())
@@ -62,10 +64,9 @@ describe('Liquidation', async function () {
     const cToken     = await CToken.attach(cPool.cToken())
 
     await Promise.all([
-      lPool.setOracle(oracle.address),
       lPool.setTreasury(treasury.address),
       lPool.setPiFee(0.02e18 + ''),
-      globalC.addLiquidityPool(lPool.address),
+      piGlobal.addLiquidityPool(lPool.address),
     ])
 
     return {
@@ -74,7 +75,7 @@ describe('Liquidation', async function () {
       cPool,
       cToken,
       dToken,
-      globalC,
+      piGlobal,
       iToken,
       lPool,
       lToken,
@@ -99,17 +100,14 @@ describe('Liquidation', async function () {
     it('should work for due pool with same token', async function () {
       const fixtures = await loadFixture(deploy)
 
-      const { alice, bob, cPool, cToken, globalC, oracle, token, LPool } = fixtures
+      const { alice, bob, cPool, cToken, piGlobal, token, LPool } = fixtures
 
       const dueDate = (await ethers.provider.getBlock()).timestamp + 20
-      const lPool   = await LPool.deploy(token.address, dueDate)
+      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
       await Promise.all([
-        globalC.setOracle(oracle.address),
         token.mint(lPool.address, 10e18 + ''),
-        lPool.setOracle(oracle.address),
-        cPool.setPiGlobal(globalC.address),
-        globalC.addLiquidityPool(lPool.address),
+        piGlobal.addLiquidityPool(lPool.address),
         setupCollateral({...fixtures, lPool}),
       ])
       // Add liquidity & Repayment
@@ -143,19 +141,16 @@ describe('Liquidation', async function () {
     it('should work for due pool with diff token', async function () {
       const fixtures = await loadFixture(deploy)
 
-      const { alice, bob, cPool, cToken, globalC, oracle, token, LPool, TokenFeed } = fixtures
+      const { alice, bob, cPool, cToken, piGlobal, oracle, token, LPool, TokenFeed } = fixtures
 
       const token2    = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
       const tokenFeed = await TokenFeed.deploy(3e8)
       const dueDate   = (await ethers.provider.getBlock()).timestamp + 20
-      const lPool     = await LPool.deploy(token2.address, dueDate)
+      const lPool     = await LPool.deploy(piGlobal.address, token2.address, dueDate)
 
       await Promise.all([
-        cPool.setPiGlobal(globalC.address),
-        globalC.addLiquidityPool(lPool.address),
-        globalC.setOracle(oracle.address),
-        lPool.setOracle(oracle.address),
         oracle.addPriceOracle(token2.address, tokenFeed.address),
+        piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
         token2.mint(lPool.address, 100e18 + ''),
         setupCollateral({...fixtures, lPool}),
@@ -196,20 +191,17 @@ describe('Liquidation', async function () {
     it('should work for low liquidation factor with diff token', async function () {
       const fixtures = await loadFixture(deploy)
 
-      const { alice, bob, cPool, cToken, globalC, oracle, token, LPool, TokenFeed } = fixtures
+      const { alice, bob, cPool, cToken, piGlobal, oracle, token, LPool, TokenFeed } = fixtures
 
       const token2     = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
       const token2Feed = await TokenFeed.deploy(3e8)
       const dueDate    = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 3600 * 1000)
-      const lPool      = await LPool.deploy(token2.address, dueDate)
+      const lPool      = await LPool.deploy(piGlobal.address, token2.address, dueDate)
 
       await Promise.all([
-        cPool.setPiGlobal(globalC.address),
-        globalC.addLiquidityPool(lPool.address),
-        globalC.setOracle(oracle.address),
-        lPool.setOracle(oracle.address),
         oracle.addPriceOracle(token2.address, token2Feed.address),
         oracle.setLiquidationThreshold(0.75e18 + '', 0.85e18 +''),
+        piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
         token2.mint(lPool.address, 100e18 + ''),
         setupCollateral({...fixtures, lPool}),

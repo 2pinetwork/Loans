@@ -14,6 +14,7 @@ interface ICPool is IPool {
     function MAX_COLLATERAL_RATIO() external view returns (uint);
     function availableCollateral(address) external view returns (uint);
     function fullCollateral(address) external view returns (uint);
+    function repay(address, address, uint) external;
 }
 
 interface ILPool is IPool {
