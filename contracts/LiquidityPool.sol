@@ -253,7 +253,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _repay(msg.sender, msg.sender, _amount);
     }
 
-
     // Only collateralPools can call this
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);

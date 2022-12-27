@@ -1,19 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-// const { ZERO_ADDRESS } = require('./helpers').constants
-
-const toHex = (n) => {
-  return ethers.utils.hexlify(n).replace(/^0x0/, '0x')
-}
-
-const mine = async function (n, time) {
-  const args = [toHex(n)]
-
-  if (time) args.push(toHex(time))
-
-  await hre.network.provider.send("hardhat_mine", args);
-}
+const { mine } = require('./helpers')
 
 const deployOracle = async function () {
   const PiGlobal = await ethers.getContractFactory('PiGlobal')
@@ -161,8 +149,8 @@ describe('Liquidation', async function () {
       const lPool     = await LPool.deploy(piGlobal.address, token2.address, dueDate)
 
       await Promise.all([
-        piGlobal.addLiquidityPool(lPool.address),
         oracle.addPriceOracle(token2.address, tokenFeed.address),
+        piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
         token2.mint(lPool.address, 100e18 + ''),
         setupCollateral({...fixtures, lPool}),
@@ -211,9 +199,9 @@ describe('Liquidation', async function () {
       const lPool      = await LPool.deploy(piGlobal.address, token2.address, dueDate)
 
       await Promise.all([
-        piGlobal.addLiquidityPool(lPool.address),
         oracle.addPriceOracle(token2.address, token2Feed.address),
         oracle.setLiquidationThreshold(0.75e18 + '', 0.85e18 +''),
+        piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
         token2.mint(lPool.address, 100e18 + ''),
         setupCollateral({...fixtures, lPool}),

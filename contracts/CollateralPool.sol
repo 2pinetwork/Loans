@@ -28,6 +28,16 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     // Minimum HF for withdraws
     uint public constant MIN_HF_FOR_WITHDRAW = 1e18;
 
+    error CantLiquidate(string);
+    error GreaterThan(string);
+    error LowHealthFactor();
+    error MaxRatio();
+    error SameAddress();
+    error SameRatio();
+    error SameValue();
+    error ZeroAddress();
+    error ZeroShares();
+
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset) {
         if (address(_piGlobal) == address(0)) revert ZeroAddress();
 
@@ -41,18 +51,11 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         _asset.balanceOf(address(this));
 
         asset = _asset;
-        piGlobal = IPiGlobal(_piGlobal);
+        piGlobal = _piGlobal;
 
         // Deploy collateral shares-token
         cToken = new CToken(asset);
     }
-
-    error CantLiquidate(string);
-    error GreaterThan(string);
-    error SameValue();
-    error ZeroAddress();
-    error ZeroShares();
-    error LowHealthFactor();
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);

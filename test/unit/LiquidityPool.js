@@ -1,19 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { ZERO_ADDRESS } = require('./helpers').constants
-
-const toHex = (n) => {
-  return ethers.utils.hexlify(n).replace(/^0x0/, '0x')
-}
-
-const mine = async function (n, time) {
-  const args = [toHex(n)]
-
-  if (time) args.push(toHex(time))
-
-  await hre.network.provider.send("hardhat_mine", args);
-}
+const { ZERO_ADDRESS, mine } = require('./helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee
