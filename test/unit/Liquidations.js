@@ -1,37 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { ZERO_ADDRESS } = require('./helpers').constants
-
-const toHex = (n) => {
-  return ethers.utils.hexlify(n).replace(/^0x0/, '0x')
-}
-
-const mine = async function (n, time) {
-  const args = [toHex(n)]
-
-  if (time) args.push(toHex(time))
-
-  await hre.network.provider.send("hardhat_mine", args);
-}
-
-const getPiFeeFor = async function (lPool, amount) {
-  // 1% piFee
-  // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
-  const [rate, piFee] = await Promise.all([lPool.interestRate(), lPool.piFee()]);
-
-  return amount.mul(piFee).div(piFee.add(rate))
-}
-
-const getInterest = async function (lPool, base, seconds) {
-  // 1% piFee
-  // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
-  const [rate, piFee] = await Promise.all([lPool.interestRate(), lPool.piFee()]);
-  const SECONDS_PER_YEAR = ethers.utils.parseUnits('31536000', 0)
-  const PRECISION = ethers.utils.parseUnits('1', 18)
-
-  return base.mul(rate.add(piFee)).mul(seconds).div(SECONDS_PER_YEAR).div(PRECISION)
-}
+const { mine } = require('./helpers')
 
 const deployOracle = async function () {
   const GlobalC = await ethers.getContractFactory('Global')

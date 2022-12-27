@@ -24,8 +24,8 @@ contract Oracle is PiAdmin {
     uint public liquidationThreshold = 0.5e18;
     uint public liquidationExpectedHF = 0.6e18;
     uint public liquidationBonus = 0.01e18; // 1% bonus for liquidator
-    uint public constant MAX_THREASHOLD = 1.0e18;
-    uint public constant MIN_THREASHOLD = 0.20e18;
+    uint public constant MAX_THRESHOLD = 1.0e18;
+    uint public constant MIN_THRESHOLD = 0.20e18;
     uint public constant MAX_LIQUIDATION_BONUS = 0.20e18; // 20% is a huge bonus...
 
     IGlobal public immutable piGlobal;
@@ -65,10 +65,10 @@ contract Oracle is PiAdmin {
     // Set the liquidation factor (the minimum HF to be liquidated)
     // Set the expected HF after for liquidation to only liquidate a little more than "critical" HF
     function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin {
-        if (_newLT > MAX_THREASHOLD) revert GreaterThan('LT > MAX_THREASHOLD');
-        if (_newLT < MIN_THREASHOLD) revert LessThan('LT < MIN_THREASHOLD');
-        if (_newLEHF <= _newLT) revert LessThan('LExpectedHF < LT');
-        if (_newLEHF > MAX_THREASHOLD) revert GreaterThan('LExpectedHF > MAX_THREASHOLD');
+        if (_newLT > MAX_THRESHOLD) revert GreaterThan("LT > MAX_THRESHOLD");
+        if (_newLT < MIN_THRESHOLD) revert LessThan("LT < MIN_THRESHOLD");
+        if (_newLEHF <= _newLT) revert LessThan("LExpectedHF < LT");
+        if (_newLEHF > MAX_THRESHOLD) revert GreaterThan("LExpectedHF > MAX_THRESHOLD");
         if (_newLT == liquidationThreshold && _newLEHF == liquidationExpectedHF) revert SameValue();
 
         emit NewLiquidationThreshold(liquidationThreshold, _newLT, liquidationExpectedHF, _newLEHF);
@@ -79,7 +79,7 @@ contract Oracle is PiAdmin {
 
     // Set a liquidation bonus percentage for liquidator
     function setLiquidationBonus(uint _newLB) external onlyAdmin {
-        if (_newLB > MAX_LIQUIDATION_BONUS) revert GreaterThan('MAX_LIQUIDATION_BONUS');
+        if (_newLB > MAX_LIQUIDATION_BONUS) revert GreaterThan("MAX_LIQUIDATION_BONUS");
 
         emit NewLiquidationBonus(liquidationBonus, _newLB);
 
@@ -141,8 +141,8 @@ contract Oracle is PiAdmin {
 
         // Entire collateral must always cover the liquidation bonus, so we consider the "available collateral"
         // as the collateral _less_ the bonus amount
-        uint _collateralWithBonus = _collateral - (_collateral * liquidationBonus / BASE_PRECISION);
-        uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_DECIMALS, _collateralWithBonus) * _cPrice / BASE_PRECISION;
+        uint _collateralWithoutBonus = _collateral - (_collateral * liquidationBonus / BASE_PRECISION);
+        uint _availableCollateralInUSD = _fixPrecision(_cPool.decimals(), BASE_DECIMALS, _collateralWithoutBonus) * _cPrice / BASE_PRECISION;
 
         // If the pool is expired, the liquidable amount is the entire debt
         if (_lPool.expired()) {
@@ -178,11 +178,10 @@ contract Oracle is PiAdmin {
          _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
     }
 
+    function _healthFactor(address _account, uint _borrowedInUsd) internal view returns (uint) {
+        if (_borrowedInUsd <= 0) return type(uint).max;
 
-    function _healthFactor(address _account, uint _borrowed) internal view returns (uint) {
-        if (_borrowed <= 0) return type(uint).max;
-
-        return _collateralInUSD(_account) * BASE_PRECISION / _borrowed;
+        return _collateralInUSD(_account) * BASE_PRECISION / _borrowedInUsd;
     }
 
     function _borrowedInAsset(address _account, address _asset) internal view returns (uint) {

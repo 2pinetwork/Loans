@@ -63,7 +63,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
         emit NewPiGlobal(address(_piGlobal), address(piGlobal));
 
-        piGlobal = IGlobal(_piGlobal);
+        piGlobal = _piGlobal;
     }
 
     function decimals() public view returns (uint8) {
