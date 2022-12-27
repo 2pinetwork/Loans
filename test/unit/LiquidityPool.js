@@ -1,19 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { ZERO_ADDRESS } = require('./helpers').constants
-
-const toHex = (n) => {
-  return ethers.utils.hexlify(n).replace(/^0x0/, '0x')
-}
-
-const mine = async function (n, time) {
-  const args = [toHex(n)]
-
-  if (time) args.push(toHex(time))
-
-  await hre.network.provider.send("hardhat_mine", args);
-}
+const { ZERO_ADDRESS, mine } = require('./helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee
@@ -327,11 +315,12 @@ describe('Liquidity Pool', async function () {
 
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
-      // Div(2) == 0.5 collateralRatio // div(5) == 0.2 tokenFeed // 13 token price
-      // mul(3).div(10) == 0.3 collateralRatio // 1.0 tokenFeed // 13 token price
-      const expectedAvailable = (depositAmount.div(2).div(5).div(13)).add(
-        depositAmount.mul(3e18 + '').div(10e18 + '').div(13)
-      )
+      // Div(2) == 0.5 collateralRatio // div(5) == 0.2 tokenFeed
+      // mul(3).div(10) == 0.3 collateralRatio // 1.0 tokenFeed
+      // 13 token price
+      const expectedAvailable = (depositAmount.div(2).div(5)).add(
+        depositAmount.mul(3e18 + '').div(10e18 + '')
+      ).div(13)
 
       expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(
         expectedAvailable
@@ -1023,15 +1012,42 @@ describe('Liquidity Pool', async function () {
       })
     })
 
-    it('Should not work for expired pool', async function () {
-      const { token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
-      const lPool            = await LPool.deploy(token.address, dueDate)
+    it('Should work for expired pool', async function () {
+        const fixtures = await loadFixture(deploy)
 
-      await mine(2)
+        const { bob, globalC, oracle, token, LPool } = fixtures
 
-      // doesn't matter if it has debt or not
-      await expect(lPool.repay(1)).to.be.revertedWithCustomError(lPool, 'EXPIRED_POOL')
+        const dueDate = (await ethers.provider.getBlock()).timestamp + 20
+        const lPool   = await LPool.deploy(token.address, dueDate)
+
+        await Promise.all([
+          token.mint(lPool.address, 10e18 + ''),
+          lPool.setOracle(oracle.address),
+          globalC.addLiquidityPool(lPool.address),
+          setupCollateral({...fixtures, lPool}),
+        ])
+
+        // Add tokens for Repayment
+        await token.mint(bob.address, 10e18 + '')
+
+        const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+        await lPool.connect(bob).borrow(depositAmount)
+
+        expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
+
+        await mine(20)
+
+        await token.connect(bob).approve(lPool.address, 100e18 + '')
+
+        expect(await lPool.expired()).to.be.equal(true)
+
+       // Should repay with expired pool
+        await expect(lPool.connect(bob).repay(depositAmount)).to.emit(
+          lPool, 'Repay'
+        ).withArgs(
+          bob.address, depositAmount
+        )
     })
   })
 
@@ -1058,24 +1074,21 @@ describe('Liquidity Pool', async function () {
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
 
-      let [hf, lt] = await oracle.healthFactor(bob.address);
+      let hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.99e18 + '', 1.01e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '');
 
       await cPool.setCollateralRatio(0.5e18 + '');
 
-      [hf, lt] = await oracle.healthFactor(bob.address);
+      hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.49e18 + '', 0.5e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
 
       await cPool.setCollateralRatio(0.3e18 + '');
 
-      [hf, lt] = await oracle.healthFactor(bob.address);
+      hf = await oracle.healthFactor(bob.address);
 
       expect(hf).to.be.within(0.29e18 + '', 0.3e18 + '')
-      expect(lt).to.be.within(0.49e18 + '', 0.5e18 + '')
     })
   })
 })

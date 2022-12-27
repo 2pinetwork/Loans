@@ -1,6 +1,6 @@
 const { expect }       = require('chai')
 const { loadFixture }  = require("@nomicfoundation/hardhat-network-helpers")
-const { ZERO_ADDRESS } = require('./helpers').constants
+const { ZERO_ADDRESS } = require('./helpers')
 
 describe('Global', async function () {
   const deploy = async function () {

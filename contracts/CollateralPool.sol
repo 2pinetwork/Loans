@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
-// import "hardhat/console.sol";
+
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -9,10 +10,16 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import  "./PiAdmin.sol";
 import {CToken} from "./CToken.sol";
 
+import "../interfaces/IOracle.sol";
+import "../interfaces/IGlobal.sol";
+import {ILPool} from "../interfaces/IPool.sol";
+
 contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
     IERC20Metadata public immutable asset;
     CToken public immutable cToken;
+
+    IGlobal public piGlobal;
 
     // The percentage of collateral from this pool that can be used as
     // collateral for loans. 100% = 1e18
@@ -28,10 +35,15 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     error ZeroShares();
     error SameRatio();
     error MaxRatio();
+    error ZeroAddress();
+    error SameAddress();
+    error CantLiquidate(string);
 
     event Deposit(address _sender, address _onBehalfOf, uint _amount, uint _shares);
     event Withdraw(address _sender, address _to, uint _amount, uint _shares);
     event NewCollateralRatio(uint _oldRatio, uint _newRatio);
+    event NewPiGlobal(address _old, address _new);
+    event LiquidationCall(address _liquidator, address _liquidated, uint _collateral, address _liquidityPool, uint _debt);
 
     function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
         if (_collateralRatio == collateralRatio) revert SameRatio();
@@ -40,6 +52,18 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         emit NewCollateralRatio(_collateralRatio, collateralRatio);
 
         collateralRatio = _collateralRatio;
+    }
+
+    function setPiGlobal(IGlobal _piGlobal) external onlyAdmin nonReentrant {
+        if (address(_piGlobal) == address(0)) revert ZeroAddress();
+        if (_piGlobal == piGlobal) revert SameAddress();
+        // just to check
+        _piGlobal.collateralPools();
+        _piGlobal.liquidityPools();
+
+        emit NewPiGlobal(address(_piGlobal), address(piGlobal));
+
+        piGlobal = _piGlobal;
     }
 
     function decimals() public view returns (uint8) {
@@ -135,4 +159,41 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         return balanceOf(_account) * getPricePerFullShare() / (10 ** decimals());
     }
 
+    // _account is the wallet to be liquidated
+    // _liquidityPool is the pool with the debt to be paid
+    // _amount is the debt (liquidityPool) amount to be liquidated
+    function liquidationCall(address _account, address _liquidityPool, uint _amount) public nonReentrant {
+        IOracle _oracle = IOracle(piGlobal.oracle());
+
+        (uint _liquidableCollateral, uint _liquidableDebt) = _oracle.getLiquidableAmounts(_account, _liquidityPool);
+
+        if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
+
+        uint _collateralToBeUsed = _liquidableCollateral;
+
+        if (_amount >= _liquidableDebt) _amount = _liquidableDebt;
+        // regla de 3 simple para obtener la cantidad de tokens a liquidar
+        else _collateralToBeUsed = _amount * _liquidableCollateral / _liquidableDebt;
+
+        // JiC...
+        if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount use too much collateral");
+
+        uint _hf = _oracle.healthFactor(_account);
+
+        // Get the burnable amount of tokens
+        uint _shares = _collateralToBeUsed * cToken.totalSupply() / balance();
+
+        // Burn liquidated account tokens
+        cToken.burn(_account, _shares);
+        // Transfer liquidable amount to liquidator
+        asset.safeTransfer(msg.sender, _collateralToBeUsed);
+
+        // Liquidator must repay
+        ILPool(_liquidityPool).liquidate(msg.sender, _account, _amount);
+
+        // Recheck HF after liquidation is not less than before
+        if (_oracle.healthFactor(_account) <= _hf) revert CantLiquidate("HF is lower than before");
+
+        emit LiquidationCall(msg.sender, _account, _collateralToBeUsed, _liquidityPool, _amount);
+    }
 }

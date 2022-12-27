@@ -1,7 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { ZERO_ADDRESS } = require('./helpers').constants
+const { ZERO_ADDRESS } = require('./helpers')
 
 describe('Oracle', async function () {
   const deploy = async function () {
@@ -54,32 +54,32 @@ describe('Oracle', async function () {
 
       expect(oracle.address).to.not.be.equal(ZERO_ADDRESS)
       expect(await oracle.piGlobal()).to.be.equal(globalC.address)
-      expect(await oracle.toleration()).to.be.equal(0)
-      expect(await oracle.MAX_TOLERATION()).to.be.equal(24 * 3600)
+      expect(await oracle.priceTimeToleration()).to.be.equal(0)
+      expect(await oracle.MAX_PRICE_TIME_TOLERATION()).to.be.equal(24 * 3600)
       expect(await oracle.BASE_PRECISION()).to.be.equal(1e18 + '')
     })
   })
 
-  describe('setToleration', async function () {
+  describe('setPriceTimeToleration', async function () {
     it('Should work', async function () {
       const { oracle } = await loadFixture(deploy)
 
-      expect(await oracle.toleration()).to.be.equal(0)
+      expect(await oracle.priceTimeToleration()).to.be.equal(0)
 
-      await expect(oracle.setToleration(10)).to.emit(
-        oracle, 'NewToleration'
+      await expect(oracle.setPriceTimeToleration(10)).to.emit(
+        oracle, 'NewPriceTimeToleration'
       ).withArgs(0, 10)
 
-      expect(await oracle.toleration()).to.be.equal(10)
+      expect(await oracle.priceTimeToleration()).to.be.equal(10)
     })
 
     it('Should revert for same quantity', async function () {
       const { oracle } = await loadFixture(deploy)
 
-      await oracle.setToleration(10)
+      await oracle.setPriceTimeToleration(10)
 
-      await expect(oracle.setToleration(10)).to.be.revertedWithCustomError(
-        oracle, 'SameToleration'
+      await expect(oracle.setPriceTimeToleration(10)).to.be.revertedWithCustomError(
+        oracle, 'SameValue'
       )
     })
   })
