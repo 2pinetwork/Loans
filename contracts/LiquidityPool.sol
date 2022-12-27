@@ -167,7 +167,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function _deposit(uint _amount, address _onBehalfOf) internal {
-        uint _before = balance();
+        uint _before = _balanceForSharesCalc();
 
         asset.safeTransferFrom(msg.sender, address(this), _amount);
 
@@ -203,7 +203,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     function _withdraw(uint _shares, address _to) internal returns (uint) {
         if (_shares <= 0) revert Errors.ZeroShares();
 
-        uint _amount = (balance() * _shares) / lToken.totalSupply();
+        uint _amount = (_balanceForSharesCalc() * _shares) / lToken.totalSupply();
 
         if (_amount > balance()) revert Errors.InsufficientLiquidity();
 
@@ -414,5 +414,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _oracle() internal view returns (IOracle) {
         return IOracle(piGlobal.oracle());
+    }
+
+    // Balance with primary debt to calculate shares
+    function _balanceForSharesCalc() internal view returns (uint) {
+        return asset.balanceOf(address(this)) + dToken.totalSupply();
     }
 }

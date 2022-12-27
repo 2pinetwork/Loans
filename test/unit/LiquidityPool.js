@@ -178,6 +178,80 @@ describe('Liquidity Pool', async function () {
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(1000)
     })
+
+    it('Should work when borrowed', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { alice, bob, lPool, lToken, token } = fixtures
+
+      await setupCollateral(fixtures)
+
+      await token.mint(alice.address, 1001)
+      await token.connect(alice).approve(lPool.address, 1001)
+
+      // Overloading Ethers-v6
+      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
+      expect(await token.balanceOf(alice.address)).to.be.equal(1)
+
+      await expect(lPool.connect(bob).borrow(900)).to.emit(lPool, 'Borrow').withArgs(bob.address, 900)
+
+      // Check that shares keep tracking
+      // Overloading Ethers-v6
+      expect(await lPool.connect(alice)['deposit(uint256)'](1)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1001)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      // Overloading Ethers-v6
+      await expect(lPool.connect(alice)['withdraw(uint256)'](102)).to.be.revertedWithCustomError(lPool, 'InsufficientLiquidity')
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      expect(await lPool.connect(alice)['withdraw(uint256)'](101)).to.emit(lPool, 'Withdraw')
+
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(900)
+      expect(await token.balanceOf(alice.address)).to.be.equal(101)
+    })
+
+    it('Should work when borrowed with interests', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { alice, bob, lPool, lToken, token } = fixtures
+
+      await setupCollateral(fixtures)
+
+      await token.mint(alice.address, 1100)
+      await token.connect(alice).approve(lPool.address, 1100)
+
+      // Overloading Ethers-v6
+      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
+      expect(await token.balanceOf(alice.address)).to.be.equal(100)
+
+      await expect(lPool.connect(bob).borrow(900)).to.emit(lPool, 'Borrow').withArgs(bob.address, 900)
+
+      // Simulate interests
+      await token.mint(lPool.address, 50)
+
+      // Check that shares keep tracking (100 * 1000 / 1050 = 95.238)
+      // Overloading Ethers-v6
+      expect(await lPool.connect(alice)['deposit(uint256)'](100)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1095)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      expect(await token.balanceOf(lPool.address)).to.be.equal(250)
+
+      // 239 shares == 251 tokens
+      // Overloading Ethers-v6
+      await expect(lPool.connect(alice)['withdraw(uint256)'](239)).to.be.revertedWithCustomError(lPool, 'InsufficientLiquidity')
+      expect(await token.balanceOf(lPool.address)).to.be.equal(250)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      expect(await lPool.connect(alice)['withdraw(uint256)'](238)).to.emit(lPool, 'Withdraw')
+
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1095 - 238)
+      expect(await token.balanceOf(alice.address)).to.be.equal(249)
+      expect(await token.balanceOf(lPool.address)).to.be.equal(1)
+    })
   })
 
   describe('Borrow', async function () {
