@@ -1,5 +1,5 @@
 const { expect }       = require('chai')
-const { loadFixture }  = require("@nomicfoundation/hardhat-network-helpers")
+const { loadFixture }  = require('@nomicfoundation/hardhat-network-helpers')
 const { ZERO_ADDRESS } = require('./helpers')
 
 describe('PiGlobal', async function () {
@@ -83,6 +83,8 @@ describe('PiGlobal', async function () {
       await expect(piGlobal.removeCollateralPool(randomAddr)).to.emit(
         piGlobal, 'CollateralPoolRemoved'
       ).withArgs(randomAddr)
+
+      expect(await piGlobal.collateralPools()).to.be.an('array').that.is.empty
     })
   })
 
@@ -143,6 +145,8 @@ describe('PiGlobal', async function () {
       await expect(piGlobal.removeLiquidityPool(randomAddr)).to.emit(
         piGlobal, 'LiquidityPoolRemoved'
       ).withArgs(randomAddr)
+
+      expect(await piGlobal.liquidityPools()).to.be.an('array').that.is.empty
     })
   })
 })

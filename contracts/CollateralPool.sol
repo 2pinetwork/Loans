@@ -26,7 +26,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     uint public collateralRatio;
     uint public constant MAX_COLLATERAL_RATIO = 1e18;
     // Minimum HF for withdraws
-    uint public constant MIN_HF_FOR_WITHDRAW = 1e18;
+    uint public constant MIN_WITHDRAWAL_HF = 1e18;
 
     error CantLiquidate(string);
     error GreaterThan(string);
@@ -64,7 +64,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
     function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
         if (_collateralRatio == collateralRatio) revert SameValue();
-        if (_collateralRatio > MAX_COLLATERAL_RATIO) revert GreaterThan('MAX_COLLATERAL_RATIO');
+        if (_collateralRatio > MAX_COLLATERAL_RATIO) revert GreaterThan("MAX_COLLATERAL_RATIO");
 
         emit NewCollateralRatio(_collateralRatio, collateralRatio);
 
@@ -190,7 +190,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         IOracle _oracle = IOracle(piGlobal.oracle());
 
         // Can't withdraw with a HF lower than 1.0
-        if (_oracle.healthFactor(msg.sender) <= MIN_HF_FOR_WITHDRAW) revert LowHealthFactor();
+        if (_oracle.healthFactor(msg.sender) <= MIN_WITHDRAWAL_HF) revert LowHealthFactor();
 
         emit Withdraw(msg.sender, _to, _amount, _shares);
 
