@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
+import {SafeBox} from "./SafeBox.sol";
 
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
@@ -62,6 +63,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Fees to be paid by borrowers
     mapping(address => uint) public remainingOriginatorFee;
 
+    // Put the repayment amount in other contract
+    // to prevent re-borrowing
+    SafeBox public safeBox;
+    bool public safeBoxEnabled;
+
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
         if (_dueDate <= block.timestamp) revert Errors.DueDateInThePast();
         if (address(_piGlobal) == address(0)) revert Errors.ZeroAddress();
@@ -102,6 +108,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     event NewTreasury(address _oldTreasury, address _newTreasury);
     event CollectedFee(uint _fee);
     event CollectedOriginatorFee(uint _fee);
+    event SafeBoxChanged(address _safeBox, bool _newState);
 
     /*********** COMMON FUNCTIONS ***********/
     function decimals() public view returns (uint8) {
@@ -144,6 +151,28 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         treasury = _treasury;
     }
+
+    function setSafeBoxEnabled(bool _newState) external onlyAdmin {
+        if (safeBoxEnabled == _newState) revert Errors.SameValue();
+
+        if (_newState) {
+            // Create the contract if not created
+            if (address(safeBox) == address(0)) safeBox = new SafeBox(address(asset));
+
+            safeBoxEnabled = true;
+        } else {
+            uint _safeBal = safeBox.balance();
+
+            // If safe is in use and now we want to permit the asset
+            // been borrowed again, we have to get the asset back
+            if (_safeBal > 0) safeBox.transfer(_safeBal);
+
+            safeBoxEnabled = false;
+        }
+
+        emit SafeBoxChanged(address(safeBox), safeBoxEnabled);
+    }
+
 
     function expired() public view returns (bool) {
         return block.timestamp > dueDate;
@@ -322,8 +351,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         // Take the payment
         asset.safeTransferFrom(_payer, address(this), _amount);
 
+        uint _piFee = 0;
         // charge fees from payment
-        if (_interestToBePaid > 0) _chargeFees(_interestToBePaid);
+        if (_interestToBePaid > 0) _piFee = _chargeFees(_interestToBePaid);
+
+        // Send the payment to safeBox
+        if (safeBoxEnabled) asset.safeTransfer(address(safeBox), _amount - _piFee);
 
         emit Repay(_account, _amount);
     }
@@ -379,8 +412,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return _amount * originatorFee / PRECISION;
     }
 
-    function _chargeFees(uint _interestAmount) internal {
-        uint _fee;
+    function _chargeFees(uint _interestAmount) internal returns (uint _fee) {
         uint _originator = remainingOriginatorFee[msg.sender];
 
         if (_originator > 0) {
@@ -405,7 +437,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             _fee = _interestAmount * piFee / (piFee + interestRate);
         }
 
-        if (_fee <= 0) return;
+        if (_fee <= 0) return 0;
 
         asset.safeTransfer(treasury, _fee);
 
@@ -418,6 +450,10 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Balance with primary debt to calculate shares
     function _balanceForSharesCalc() internal view returns (uint) {
-        return asset.balanceOf(address(this)) + dToken.totalSupply();
+        return asset.balanceOf(address(this)) + dToken.totalSupply() + _safeBalance();
+    }
+
+    function _safeBalance() internal view returns (uint) {
+        return safeBoxEnabled ? safeBox.balance() : 0;
     }
 }
