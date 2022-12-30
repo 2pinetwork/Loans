@@ -6,6 +6,7 @@ interface IPool {
     function decimals() external view returns (uint8);
     function balanceOf(address) external view returns (uint);
     function balance() external view returns (uint);
+    function piGlobal() external view returns (address);
 }
 
 interface ICPool is IPool {

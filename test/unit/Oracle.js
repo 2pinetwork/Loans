@@ -19,12 +19,13 @@ describe('Oracle', async function () {
 
     const cPool     = await CPool.deploy(piGlobal.address, token.address)
     const lPool     = await LPool.deploy(piGlobal.address, token.address, dueDate)
-    const cToken    = await (await ethers.getContractFactory('CToken')).attach(await cPool.cToken())
-    const lToken    = await (await ethers.getContractFactory('LToken')).attach(await lPool.lToken())
+    const Controller = await ethers.getContractFactory('Controller')
+    const cToken = await Controller.deploy(cPool.address)
     const TokenFeed = await ethers.getContractFactory('PriceFeedMock')
     const tokenFeed = await TokenFeed.deploy(13e8)
 
     await Promise.all([
+      cPool.setController(cToken.address),
       piGlobal.addCollateralPool(cPool.address),
       piGlobal.addLiquidityPool(lPool.address),
       // let's use 1:1 collateral-borrow
@@ -39,10 +40,8 @@ describe('Oracle', async function () {
       alice,
       bob,
       cPool,
-      cToken,
       piGlobal,
       lPool,
-      lToken,
       oracle,
       token,
       tokenFeed,

@@ -15,19 +15,18 @@ describe('Collateral Pool', async function () {
 
     const token  = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
     const Pool   = await ethers.getContractFactory('CollateralPool')
-    const CToken = await ethers.getContractFactory('CToken')
+    const Controller = await ethers.getContractFactory('Controller')
     const pool   = await Pool.deploy(piGlobal.address, token.address)
-    const cToken = await CToken.attach(await pool.cToken())
+    const cToken = await Controller.deploy(pool.address)
 
-    return { alice, bob, cToken, piGlobal, oracle, pool, token, CToken, Pool }
+    await pool.setController(cToken.address)
+
+    return { alice, bob, cToken, piGlobal, oracle, pool, token, Controller, Pool }
   }
 
   describe('Deployment', async function () {
     it('Should work', async function () {
-      const { piGlobal, token, CToken, Pool } = await loadFixture(deploy)
-
-      const pool    = await Pool.deploy(piGlobal.address, token.address)
-      const cToken  = await CToken.attach(await pool.cToken())
+      const { pool, cToken } = await loadFixture(deploy)
 
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(cToken.address).to.not.be.equal(ZERO_ADDRESS)
@@ -51,11 +50,11 @@ describe('Collateral Pool', async function () {
       expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
 
-      await token.mint(pool.address, 8) // just to change the shares proportion
+      await token.mint(cToken.address, 8) // just to change the shares proportion
 
       expect(await pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
-      expect(await cToken.balanceOf(alice.address)).to.be.within(990, 1000)
+      expect(await cToken.balanceOf(alice.address)).to.be.equal(992)
       expect(await pool.balance()).to.be.equal(2008)
     })
   })

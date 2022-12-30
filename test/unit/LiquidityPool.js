@@ -78,8 +78,11 @@ describe('Liquidity Pool', async function () {
     const iToken     = await DToken.attach(await lPool.iToken())
     const TokenFeed  = await ethers.getContractFactory('PriceFeedMock')
     const tokenFeed  = await TokenFeed.deploy(13e8)
+    const Controller = await ethers.getContractFactory('Controller')
+    const cToken     = await Controller.deploy(cPool.address)
 
     await Promise.all([
+      cPool.setController(cToken.address),
       lPool.setTreasury(treasury.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
@@ -98,6 +101,7 @@ describe('Liquidity Pool', async function () {
       token,
       tokenFeed,
       treasury,
+      Controller,
       DToken,
       LToken,
       CPool,
@@ -357,6 +361,7 @@ describe('Liquidity Pool', async function () {
         oracle,
         token,
         tokenFeed,
+        Controller,
         CPool,
         TokenFeed
       } = fixtures
@@ -368,10 +373,14 @@ describe('Liquidity Pool', async function () {
       const cPool3     = await CPool.deploy(piGlobal.address, token3.address)
       const tokenFeed2 = await TokenFeed.deploy(0.2e8)
       const tokenFeed3 = await TokenFeed.deploy(1.0e8)
+      const controller2 = await Controller.deploy(cPool2.address)
+      const controller3 = await Controller.deploy(cPool3.address)
 
       await Promise.all([
         cPool2.setCollateralRatio(ethers.utils.parseUnits('0.5', 18)),
         cPool3.setCollateralRatio(ethers.utils.parseUnits('0.3', 18)),
+        cPool2.setController(controller2.address),
+        cPool3.setController(controller3.address),
         piGlobal.addCollateralPool(cPool.address),
         piGlobal.addCollateralPool(cPool2.address),
         piGlobal.addCollateralPool(cPool3.address),

@@ -60,10 +60,11 @@ describe('Liquidation', async function () {
     const iToken     = await DToken.attach(await lPool.iToken())
     const TokenFeed  = await ethers.getContractFactory('PriceFeedMock')
     const tokenFeed  = await TokenFeed.deploy(13e8)
-    const CToken     = await ethers.getContractFactory('CToken')
-    const cToken     = await CToken.attach(cPool.cToken())
+    const Controller = await ethers.getContractFactory('Controller')
+    const cToken     = await Controller.deploy(cPool.address)
 
     await Promise.all([
+      cPool.setController(cToken.address),
       lPool.setTreasury(treasury.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
@@ -83,7 +84,6 @@ describe('Liquidation', async function () {
       token,
       tokenFeed,
       treasury,
-      CToken,
       DToken,
       LToken,
       CPool,
