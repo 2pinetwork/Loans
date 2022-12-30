@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
@@ -32,6 +33,7 @@ library Errors {
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     IERC20Metadata public immutable asset;
     // Liquidity token
@@ -52,6 +54,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
+    // Keep track of borrowers
+    EnumerableSet.AddressSet internal borrowers;
 
     // Due date to end the pool
     uint public immutable dueDate;
@@ -275,6 +279,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         asset.safeTransfer(msg.sender, _amount);
 
+        borrowers.add(msg.sender);
+
         emit Borrow(msg.sender, _amount);
     }
 
@@ -285,6 +291,31 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // Only collateralPools can call this
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
+    }
+
+    // Keep in mind the gasLimit (as gas profiler each repay could cost 176500 gwei)
+    // 1Mwei for the tipical strategy.harvest => only left gas for 107 users ...
+    // block limit Polygon: 28M / Eth: 30M / BSC: 140M / Avalanche: 8M / OP: 15M
+    // Polygon: 153 / Eth: 164 / BSC: 787 / Avalanche: 50 / OP: 79
+    // we have to do something with it...
+    function massiveRepay(uint _amount) external nonReentrant {
+        uint _totalDebt = 0;
+
+        // Prevent double call to _debt()
+        uint[] memory _allDebts = new uint[](borrowers.length());
+
+        // Get the total debt for all borrowers
+        for (uint i = 0; i < borrowers.length(); i++) {
+            (,,, _allDebts[i]) = _debt(borrowers.at(i));
+
+            _totalDebt += _allDebts[i];
+        }
+
+        for (uint i = 0; i < borrowers.length(); i++) {
+            uint _debtToBePaid = _amount * _allDebts[i] / _totalDebt;
+
+            if (_debtToBePaid > 0) _repay(msg.sender, borrowers.at(i), _debtToBePaid);
+        }
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {
@@ -312,6 +343,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             // Burn debt & interests
             dToken.burn(_account, _dTokens);
             if (_iTokens > 0) iToken.burn(_account, _iTokens);
+
+            // Remove borrower from active borrowers
+            borrowers.remove(_account);
         } else {
             // In case of amount <= diff || amount <= (diff + iTokens)
             _interestToBePaid = _amount;
@@ -351,12 +385,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         // Take the payment
         asset.safeTransferFrom(_payer, address(this), _amount);
 
-        uint _piFee = 0;
+        uint _fees = 0;
         // charge fees from payment
-        if (_interestToBePaid > 0) _piFee = _chargeFees(_interestToBePaid);
+        if (_interestToBePaid > 0) _fees = _chargeFees(_interestToBePaid);
 
         // Send the payment to safeBox
-        if (safeBoxEnabled) asset.safeTransfer(address(safeBox), _amount - _piFee);
+        if (safeBoxEnabled) asset.safeTransfer(address(safeBox), _amount - _fees);
 
         emit Repay(_account, _amount);
     }
@@ -394,6 +428,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         uint _timeDiff = block.timestamp;
 
         if (_timeDiff > dueDate) _timeDiff = dueDate;
+        //Check if this if is necessary or it should never happen (maybe think in a repay in the future after dueDate??)
+        // if (_timeDiff < _timestamps[_account]) _timeDiff = _timestamps[_account];)
 
         _timeDiff -= _timestamps[_account];
 

@@ -1,6 +1,7 @@
 require('@nomicfoundation/hardhat-toolbox')
 require('@nomicfoundation/hardhat-chai-matchers')
 require('solidity-coverage')
+require('hardhat-gas-reporter')
 
 const loadAccounts = () => {
   const fs = require('fs')
@@ -43,5 +44,11 @@ module.exports = {
       accounts:   accounts,
       network_id: 137
     }
-  }
+  },
+  gasReporter: {
+    enabled:       !!process.env.REPORT_GAS,
+    currency:      'USD',
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+    gasPrice:      1, // to compare between tests
+  },
 }
