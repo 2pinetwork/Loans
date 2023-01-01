@@ -22,8 +22,9 @@ library Errors {
     error SameValue();
     error InsufficientFunds();
     error NoDebt();
-    error ZeroShares();
     error ZeroAmount();
+    error ZeroDebt();
+    error ZeroShares();
     error InsufficientLiquidity();
     error GreaterThan(string);
     error AlreadyInitialized();
@@ -285,12 +286,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function repay(uint _amount) external nonReentrant {
-        _repay(msg.sender, msg.sender, _amount);
+        _repay(msg.sender, msg.sender, _amount, true);
     }
 
     // Only collateralPools can call this
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
-        _repay(_payer, _account, _amount);
+        _repay(_payer, _account, _amount, true);
     }
 
     // Keep in mind the gasLimit (as gas profiler each repay could cost 176500 gwei)
@@ -300,25 +301,45 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // we have to do something with it...
     function massiveRepay(uint _amount) external nonReentrant {
         uint _totalDebt = 0;
+        uint _length = borrowers.length();
 
         // Prevent double call to _debt()
-        uint[] memory _allDebts = new uint[](borrowers.length());
+        uint[] memory _allDebts = new uint[](_length);
 
         // Get the total debt for all borrowers
-        for (uint i = 0; i < borrowers.length(); i++) {
+        for (uint i = 0; i < _length; i++) {
             (,,, _allDebts[i]) = _debt(borrowers.at(i));
 
             _totalDebt += _allDebts[i];
         }
 
-        for (uint i = 0; i < borrowers.length(); i++) {
+        if (_totalDebt <= 0) revert Errors.ZeroDebt();
+        if (_amount > _totalDebt) _amount = _totalDebt;
+
+        for (uint i = 0; i < _length; i++) {
             uint _debtToBePaid = _amount * _allDebts[i] / _totalDebt;
 
-            if (_debtToBePaid > 0) _repay(msg.sender, borrowers.at(i), _debtToBePaid);
+            // We should check for gasleft here, so we can repay the rest in the next tx if needed
+            if (gasleft() <= 200_000) break;
+            // If we remove the borrower from the list, the length will be reduced
+            if (_debtToBePaid > 0) _repay(msg.sender, borrowers.at(i), _debtToBePaid, false);
+        }
+
+        address[] memory _toRemove = new address[](_length);
+        uint _toRemoveLength = 0;
+
+        for (uint i = 0; i < _length; i++) {
+            (,,, uint _currentDebt) = _debt(borrowers.at(i));
+
+            if (_currentDebt == 0) _toRemove[_toRemoveLength++] = borrowers.at(i);
+        }
+
+        for (uint i = 0; i < _toRemove.length; i++) {
+            borrowers.remove(_toRemove[i]);
         }
     }
 
-    function _repay(address _payer, address _account, uint _amount) internal {
+    function _repay(address _payer, address _account, uint _amount, bool _removeBorrower) internal {
         if (_amount <= 0) revert Errors.ZeroAmount();
         if (_timestamps[_account] == 0) revert Errors.NoDebt();
 
@@ -345,7 +366,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             if (_iTokens > 0) iToken.burn(_account, _iTokens);
 
             // Remove borrower from active borrowers
-            borrowers.remove(_account);
+            if (_removeBorrower) borrowers.remove(_account);
         } else {
             // In case of amount <= diff || amount <= (diff + iTokens)
             _interestToBePaid = _amount;
