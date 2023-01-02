@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -10,6 +11,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICPool} from "../interfaces/IPool.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../interfaces/IStrategy.sol";
+import "../interfaces/IOracle.sol";
 
 contract Controller is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
@@ -60,16 +62,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
     function decimals() override public view returns (uint8) { return asset.decimals(); }
 
-    // BeforeTransfer callback to harvest the pool rewards for both users
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override {
-        // ignore mint/burn
-        if (from != address(0) && to != address(0) && amount > 0) {
-        }
-    }
-
-    // AferTransfer callback to update the pool rewards for both users
+    // AferTransfer callback to prevent transfers when a debt is still open
     function _afterTokenTransfer(address from, address to, uint256 amount) internal virtual override {
         if (from != address(0) && to != address(0) && amount > 0) {
+            IOracle(piGlobal.oracle()).checkHealthy(from);
         }
     }
 

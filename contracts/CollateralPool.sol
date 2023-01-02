@@ -42,12 +42,9 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     // collateral for loans. 100% = 1e18
     uint public collateralRatio;
     uint public constant MAX_COLLATERAL_RATIO = 1e18;
-    // Minimum HF for withdraws
-    uint public constant MIN_WITHDRAWAL_HF = 1e18;
 
     error CantLiquidate(string);
     error GreaterThan(string);
-    error LowHealthFactor();
     error MaxRatio();
     error SameAddress();
     error SameRatio();
@@ -199,7 +196,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         asset.safeTransfer(_to, _withdrawn);
 
         // Can't withdraw with a HF lower than 1.0
-        if (IOracle(piGlobal.oracle()).healthFactor(msg.sender) <= MIN_WITHDRAWAL_HF) revert LowHealthFactor();
+        IOracle(piGlobal.oracle()).checkHealthy(msg.sender);
 
         emit Withdraw(msg.sender, _to, _withdrawn, _shares);
 

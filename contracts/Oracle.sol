@@ -27,9 +27,11 @@ contract Oracle is PiAdmin {
     uint public constant MAX_THRESHOLD = 1.0e18;
     uint public constant MIN_THRESHOLD = 0.20e18;
     uint public constant MAX_LIQUIDATION_BONUS = 0.20e18; // 20% is a huge bonus...
+    uint public constant MIN_HEALTHY_HF = 1.0e18;
 
     IPiGlobal public immutable piGlobal;
 
+    error LowHealthFactor();
     error InvalidFeed(address);
     error MaxPriceTimeToleration();
     error OldPrice();
@@ -176,6 +178,13 @@ contract Oracle is PiAdmin {
          _liquidableCollateral = _debtToBePaid * _lPrice / _cPrice;
          // have to add the liquidation bonus %
          _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
+    }
+
+    // Used to raise a Low HF after some actions like liquidation & transfers
+    function checkHealthy(address _account) external view {
+        uint _borrowed = _borrowedInUSD(_account);
+
+        if (_healthFactor(_account, _borrowed) < MIN_HEALTHY_HF) revert LowHealthFactor();
     }
 
     function _healthFactor(address _account, uint _borrowedInUsd) internal view returns (uint) {
