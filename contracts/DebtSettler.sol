@@ -75,7 +75,11 @@ contract DebtSettler is ReentrancyGuard {
 
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
             if (gasleft() <= 50_000) break;
-            if (_debt > 0) pool.repayFor(_borrower, _debt);
+
+            if (_debt > 0) {
+                pool.repayFor(_borrower, _debt);
+                _records.set(_borrower, 0);
+            }
         }
     }
 
@@ -94,11 +98,23 @@ contract DebtSettler is ReentrancyGuard {
         }
     }
 
+    function recordsLength() external view returns (uint) {
+        return _records.length();
+    }
+
     function addBorrower(address _borrower) external onlyPool nonReentrant {
         _borrowers.add(_borrower);
     }
 
     function removeBorrower(address _borrower) external onlyPool nonReentrant {
         _borrowers.remove(_borrower);
+    }
+
+    function rescueFounds() external nonReentrant {
+        uint _balance = asset.balanceOf(address(this));
+
+        if (_borrowers.length() <= 0 && _balance > 0) {
+            asset.safeTransfer(pool.treasury(), _balance);
+        }
     }
 }
