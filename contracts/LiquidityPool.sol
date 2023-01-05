@@ -6,18 +6,21 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
 import {SafeBox} from "./SafeBox.sol";
 
+import "../interfaces/IPool.sol";
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../libraries/Errors.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     IERC20Metadata public immutable asset;
     // Liquidity token
@@ -38,6 +41,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
+    // Keep track of borrowers
+    EnumerableSet.AddressSet internal _borrowers;
 
     // Due date to end the pool
     uint public immutable dueDate;
@@ -54,13 +59,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     SafeBox public safeBox;
     bool public safeBoxEnabled;
 
-    error AlreadyInitialized();
-    error DueDateInThePast();
-    error ExpiredPool();
-    error InsufficientFunds();
-    error InsufficientLiquidity();
-    error NoDebt();
-    error UnknownSender();
+    // Payables
+    IPayables public payables;
 
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
         if (_dueDate <= block.timestamp) revert DueDateInThePast();
@@ -88,6 +88,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     modifier fromCollateralPool {
         if (! piGlobal.isValidCollateralPool(msg.sender)) revert UnknownSender();
+        _;
+    }
+
+    modifier onlyPayables {
+        if (msg.sender != address(payables)) revert Errors.UnknownSender();
         _;
     }
 
@@ -144,6 +149,13 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         emit NewTreasury(treasury, _treasury);
 
         treasury = _treasury;
+    }
+
+    function setPayables(IPayables _payables) external onlyAdmin {
+        if (address(_payables) == address(0)) revert Errors.ZeroAddress();
+        if (address(_payables) == address(payables)) revert Errors.SameValue();
+
+        payables = _payables;
     }
 
     function setSafeBoxEnabled(bool _newState) external onlyAdmin {
@@ -268,6 +280,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _timestamps[msg.sender] = uint40(block.timestamp);
 
         asset.safeTransfer(msg.sender, _amount);
+        _borrowers.add(msg.sender);
 
         emit Borrow(msg.sender, _amount);
     }
@@ -276,11 +289,33 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _repay(msg.sender, msg.sender, _amount);
     }
 
+    function repayFor(address _payer, address _account, uint _amount) external onlyPayables {
+        _repay(_payer, _account, _amount);
+    }
+
     // Only collateralPools can call this
     // if anyone could call this, any unlimited allowance to this contract could be used to repay
     // debt on behalf of anyone...
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
+    }
+
+    function borrowersLength() external view returns (uint) {
+        return _borrowers.length();
+    }
+
+    function borrowers(uint _index) external view returns (address) {
+        return _borrowers.at(_index);
+    }
+
+    function buildMassiveRepay(uint _amount) external nonReentrant {
+        asset.safeTransferFrom(msg.sender, address(payables), _amount);
+        payables.build(_amount);
+    }
+
+    function massiveRepay() external nonReentrant {
+        payables.pay();
+        payables.clean();
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {

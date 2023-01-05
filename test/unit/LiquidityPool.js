@@ -60,11 +60,13 @@ describe('Liquidity Pool', async function () {
     const CPool      = await ethers.getContractFactory('CollateralPool')
     const LToken     = await ethers.getContractFactory('LToken')
     const DToken     = await ethers.getContractFactory('DToken')
+    const Payables   = await ethers.getContractFactory('Payables')
     const lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
     const cPool      = await CPool.deploy(piGlobal.address, token.address)
     const lToken     = await LToken.attach(await lPool.lToken())
     const dToken     = await DToken.attach(await lPool.dToken())
     const iToken     = await DToken.attach(await lPool.iToken())
+    const payables   = await Payables.deploy(lPool.address)
     const TokenFeed  = await ethers.getContractFactory('PriceFeedMock')
     const tokenFeed  = await TokenFeed.deploy(13e8)
     const Controller = await ethers.getContractFactory('Controller')
@@ -73,6 +75,7 @@ describe('Liquidity Pool', async function () {
     await Promise.all([
       cPool.setController(cToken.address),
       lPool.setTreasury(treasury.address),
+      lPool.setPayables(payables.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
     ])
@@ -87,6 +90,7 @@ describe('Liquidity Pool', async function () {
       lPool,
       lToken,
       oracle,
+      payables,
       token,
       tokenFeed,
       treasury,
@@ -1247,6 +1251,159 @@ describe('Liquidity Pool', async function () {
         lPoolBal.add(repayment.sub(piFee).mul(2))
       )
       expect(await token.balanceOf(safeBox.address)).to.be.equal(0) // still without use
+    })
+  })
+
+  describe('Massive repay', async function () {
+    it('Should work for massive repay amount >= debt', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const {
+        alice,
+        bob,
+        iToken,
+        dToken,
+        cPool,
+        lPool,
+        token,
+        treasury,
+      } = fixtures
+
+      await setupCollateral(fixtures)
+
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 40e18 + '')
+      await token.mint(bob.address, 10e18 + '')
+      await token.mint(alice.address, 20e18 + '')
+
+      // Alice collateral
+      await token.connect(alice).approve(cPool.address, 20e18 + '')
+      await expect(cPool.connect(alice)['deposit(uint256)'](20e18 + '')).to.emit(cPool, 'Deposit')
+
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      const ts = (await hre.ethers.provider.getBlock()).timestamp
+      await lPool.connect(bob).borrow(depositAmount)
+      await lPool.connect(alice).borrow(depositAmount.mul(2))
+
+      // Since it already compute some interests
+      expect(await lPool['debt(address)'](bob.address)).to.be.within(
+        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.00001', 18))
+      )
+
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
+        depositAmount.mul(2)
+      )
+
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
+      expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
+      expect(await iToken.balanceOf(alice.address)).to.be.equal(0)
+
+      await token.mint(treasury.address, 40e18 + '')
+      await token.connect(treasury).approve(lPool.address, 100e18 + '')
+
+      const seconds        = (await hre.ethers.provider.getBlock()).timestamp - ts
+      const interestAmount = await getInterest(lPool, depositAmount, seconds)
+      const repayAmount    = depositAmount.add(interestAmount).mul(3)
+
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await lPool.connect(treasury).massiveRepay()
+
+      // Since debt is calculated before payment, next block we have _some_
+      const oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
+
+      expect(await lPool['debt(address)'](bob.address)).to.be.equal(oneBlockInterestAmount)
+      // Alice has double amount deposited, hence twice the interest of bob
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(oneBlockInterestAmount.mul(2))
+    })
+
+    it('Should work for massive repay amount < debt', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const {
+        alice,
+        bob,
+        iToken,
+        dToken,
+        cPool,
+        lPool,
+        token,
+        treasury,
+      } = fixtures
+
+      await setupCollateral(fixtures)
+
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 40e18 + '')
+      await token.mint(bob.address, 10e18 + '')
+      await token.mint(alice.address, 20e18 + '')
+
+      // Alice collateral
+      await token.connect(alice).approve(cPool.address, 20e18 + '')
+      await expect(cPool.connect(alice)['deposit(uint256)'](20e18 + '')).to.emit(cPool, 'Deposit')
+
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      await lPool.connect(bob).borrow(depositAmount)
+      await lPool.connect(alice).borrow(depositAmount.mul(2))
+
+      // Since it already compute some interests
+      expect(await lPool['debt(address)'](bob.address)).to.be.within(
+        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.00001', 18))
+      )
+
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
+        depositAmount.mul(2)
+      )
+
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
+
+      expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
+      expect(await iToken.balanceOf(alice.address)).to.be.equal(0)
+
+      await token.mint(treasury.address, 20e18 + '')
+      await token.connect(treasury).approve(lPool.address, 100e18 + '')
+
+      const repayAmount = ethers.utils.parseUnits('20', 18)
+      const bobDebt     = await lPool['debt(address)'](bob.address)
+      const aliceDebt   = await lPool['debt(address)'](alice.address)
+      const totalDebt   = bobDebt.add(aliceDebt)
+
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await lPool.connect(treasury).massiveRepay()
+
+      const bobDebtAfter   = await lPool['debt(address)'](bob.address)
+      const aliceDebtAfter = await lPool['debt(address)'](alice.address)
+      const totalDebtAfter = bobDebtAfter.add(aliceDebtAfter)
+      const precision      = ethers.utils.parseUnits('1', 18)
+      const totalDebtRatio = totalDebtAfter.mul(precision).div(totalDebt)
+
+      expect(bobDebtAfter).to.be.within(
+        bobDebt.mul(totalDebtRatio).mul(1000).div(precision).div(1001),
+        bobDebt.mul(totalDebtRatio).mul(1000).div(precision).div(999)
+      )
+      expect(aliceDebtAfter).to.be.within(
+        aliceDebt.mul(totalDebtRatio).mul(1000).div(precision).div(1001),
+        aliceDebt.mul(totalDebtRatio).mul(1000).div(precision).div(999)
+      )
+      expect(totalDebtAfter).to.be.within(
+        totalDebt.sub(repayAmount).mul(1000).div(1001),
+        totalDebt.sub(repayAmount).mul(1000).div(999)
+      )
+    })
+
+    it('Should revert when no debt', async function () {
+      const { lPool, payables, token, treasury } = await loadFixture(deploy)
+
+      await token.mint(treasury.address, 100e18 + '')
+      await token.connect(treasury).approve(lPool.address, 100e18 + '')
+
+      await expect(lPool.connect(treasury).buildMassiveRepay('100')).to.be.revertedWithCustomError(
+        payables, 'ZeroDebt'
+      )
     })
   })
 
