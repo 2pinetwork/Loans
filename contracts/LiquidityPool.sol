@@ -394,6 +394,10 @@ contract LiquidityPool is Pausable, PiAdmin {
         return _amount;
     }
 
+    function totalDebt() external view returns (uint) {
+        return dToken.totalSupply() + iToken.totalSupply();
+    }
+
     function _debt(address _account) internal view returns (uint, uint, uint, uint) {
         uint _dBal = dToken.balanceOf(_account);
         uint _iBal = iToken.balanceOf(_account);
