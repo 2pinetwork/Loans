@@ -14,7 +14,7 @@ import "../interfaces/IPiGlobal.sol";
 import {ILPool} from "../interfaces/IPool.sol";
 import "../libraries/Errors.sol";
 
-contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
+contract CollateralPool is PiAdmin, Pausable {
     using SafeERC20 for IERC20Metadata;
 
     IERC20Metadata public immutable asset;
@@ -57,7 +57,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     event LiquidationCall(address _liquidator, address _liquidated, uint _collateral, address _liquidityPool, uint _debt);
     event ControllerSet(address _controller);
 
-    function setController(IController _controller) external onlyAdmin {
+    function setController(IController _controller) external onlyAdmin nonReentrant {
         if (address(_controller) == address(0)) revert Errors.ZeroAddress();
         if (address(controller) != address(0)) revert AlreadyInitialized();
         // Controller constructor takes pool asset & piGlobal
@@ -68,7 +68,7 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         controller = _controller;
     }
 
-    function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
+    function setCollateralRatio(uint _collateralRatio) external onlyAdmin nonReentrant {
         if (_collateralRatio == collateralRatio) revert Errors.SameValue();
         if (_collateralRatio > MAX_COLLATERAL_RATIO) revert Errors.GreaterThan("MAX_COLLATERAL_RATIO");
 

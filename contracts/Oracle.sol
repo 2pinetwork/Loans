@@ -52,7 +52,7 @@ contract Oracle is PiAdmin {
     event NewLiquidationBonus(uint _old, uint _new);
 
     // Set max price offset in time permited
-    function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin {
+    function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin nonReentrant {
         if (_newPriceTimeToleration > MAX_PRICE_TIME_TOLERATION) revert MaxPriceTimeToleration();
         if (priceTimeToleration == _newPriceTimeToleration) revert Errors.SameValue();
 
@@ -63,7 +63,7 @@ contract Oracle is PiAdmin {
 
     // Set the liquidation factor (the minimum HF to be liquidated)
     // Set the expected HF after for liquidation to only liquidate a little more than "critical" HF
-    function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin {
+    function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin nonReentrant {
         if (_newLT > MAX_THRESHOLD) revert Errors.GreaterThan("LT > MAX_THRESHOLD");
         if (_newLT < MIN_THRESHOLD) revert Errors.LessThan("LT < MIN_THRESHOLD");
         if (_newLEHF <= _newLT) revert Errors.LessThan("LExpectedHF < LT");
@@ -77,7 +77,7 @@ contract Oracle is PiAdmin {
     }
 
     // Set a liquidation bonus percentage for liquidator
-    function setLiquidationBonus(uint _newLB) external onlyAdmin {
+    function setLiquidationBonus(uint _newLB) external onlyAdmin nonReentrant {
         if (_newLB > MAX_LIQUIDATION_BONUS) revert Errors.GreaterThan("MAX_LIQUIDATION_BONUS");
 
         emit NewLiquidationBonus(liquidationBonus, _newLB);
@@ -86,7 +86,7 @@ contract Oracle is PiAdmin {
     }
 
     // Add token oracle price
-    function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin {
+    function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin nonReentrant {
         if (_token == address(0)) revert Errors.ZeroAddress();
         if (priceFeeds[_token] == _feed) revert Errors.SameValue();
 

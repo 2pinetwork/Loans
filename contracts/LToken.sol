@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-contract LToken is ERC20 {
+contract LToken is ERC20, ReentrancyGuard {
     IERC20Metadata public immutable asset;
     address public immutable pool;
 
@@ -28,11 +28,11 @@ contract LToken is ERC20 {
         return asset.decimals();
     }
 
-    function mint(address _to, uint _amount) external onlyPool {
+    function mint(address _to, uint _amount) external onlyPool nonReentrant {
         _mint(_to, _amount);
     }
 
-    function burn(address _from, uint _amount) external onlyPool {
+    function burn(address _from, uint _amount) external onlyPool nonReentrant {
         _burn(_from, _amount);
     }
 }

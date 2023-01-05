@@ -16,7 +16,7 @@ import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../libraries/Errors.sol";
 
-contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
+contract LiquidityPool is Pausable, PiAdmin {
     using SafeERC20 for IERC20Metadata;
 
     IERC20Metadata public immutable asset;
@@ -109,7 +109,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         return asset.decimals();
     }
 
-    function setInterestRate(uint _newInterestRate) external onlyAdmin {
+    function setInterestRate(uint _newInterestRate) external onlyAdmin nonReentrant {
         if (_newInterestRate > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
@@ -118,7 +118,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         interestRate = _newInterestRate;
     }
 
-    function setOriginatorFee(uint _newOriginatorFee) external onlyAdmin {
+    function setOriginatorFee(uint _newOriginatorFee) external onlyAdmin nonReentrant {
         // No more than 100% JIC
         if (_newOriginatorFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert AlreadyInitialized();
@@ -128,7 +128,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         originatorFee = _newOriginatorFee;
     }
 
-    function setPiFee(uint _piFee) external onlyAdmin {
+    function setPiFee(uint _piFee) external onlyAdmin nonReentrant {
         if (_piFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
@@ -137,7 +137,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         piFee = _piFee;
     }
 
-    function setTreasury(address _treasury) external onlyAdmin {
+    function setTreasury(address _treasury) external onlyAdmin nonReentrant {
         if (_treasury == address(0)) revert Errors.ZeroAddress();
         if (_treasury == treasury) revert Errors.SameValue();
 
@@ -146,7 +146,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         treasury = _treasury;
     }
 
-    function setSafeBoxEnabled(bool _newState) external onlyAdmin {
+    function setSafeBoxEnabled(bool _newState) external onlyAdmin nonReentrant {
         if (safeBoxEnabled == _newState) revert Errors.SameValue();
 
         if (_newState) {

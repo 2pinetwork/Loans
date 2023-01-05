@@ -29,7 +29,7 @@ contract PiGlobal is PiAdmin {
 
     constructor() { treasury = msg.sender; }
 
-    function setOracle(address _oracle) external onlyAdmin {
+    function setOracle(address _oracle) external onlyAdmin nonReentrant {
         if (_oracle == address(0)) revert Errors.ZeroAddress();
         if (IOracle(_oracle).piGlobal() != address(this)) revert WrongOracle();
 
@@ -39,7 +39,7 @@ contract PiGlobal is PiAdmin {
     }
 
     // To be used by default
-    function setTreasury(address _treasury) external onlyAdmin {
+    function setTreasury(address _treasury) external onlyAdmin nonReentrant {
         if (_treasury == address(0)) revert Errors.ZeroAddress();
         if (_treasury == treasury) revert Errors.SameValue();
 
@@ -48,7 +48,7 @@ contract PiGlobal is PiAdmin {
         treasury = _treasury;
     }
 
-    function addCollateralPool(address _pool) external onlyAdmin {
+    function addCollateralPool(address _pool) external onlyAdmin nonReentrant {
         if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! collateralPoolsSet.add(_pool)) revert AlreadyExists();
@@ -56,7 +56,7 @@ contract PiGlobal is PiAdmin {
         emit NewCollateralPool(_pool);
     }
 
-    function removeCollateralPool(address _pool) external onlyAdmin {
+    function removeCollateralPool(address _pool) external onlyAdmin nonReentrant {
         if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! collateralPoolsSet.remove(_pool)) revert UnknownPool();
@@ -64,7 +64,7 @@ contract PiGlobal is PiAdmin {
         emit CollateralPoolRemoved(_pool);
     }
 
-    function addLiquidityPool(address _pool) external onlyAdmin {
+    function addLiquidityPool(address _pool) external onlyAdmin nonReentrant {
         if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! liquidityPoolsSet.add(_pool)) revert AlreadyExists();
@@ -74,7 +74,7 @@ contract PiGlobal is PiAdmin {
         emit NewLiquidityPool(_pool);
     }
 
-    function removeLiquidityPool(address _pool) external onlyAdmin {
+    function removeLiquidityPool(address _pool) external onlyAdmin nonReentrant {
         if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! liquidityPoolsSet.remove(_pool)) revert UnknownPool();
