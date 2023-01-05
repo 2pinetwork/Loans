@@ -85,11 +85,11 @@ contract CollateralPool is PiAdmin, Pausable {
     function decimals() public view returns (uint8) { return controller.decimals(); }
     function pricePerShare() public view returns (uint) { return controller.pricePerShare(); }
 
-    function deposit(uint _amount, address _onBehalfOf) external nonReentrant whenNotPaused {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant {
         _deposit(_amount, _onBehalfOf);
     }
 
-    function deposit(uint _amount) external nonReentrant whenNotPaused {
+    function deposit(uint _amount) external nonReentrant {
         _deposit(_amount, msg.sender);
     }
 

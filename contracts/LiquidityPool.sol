@@ -192,11 +192,11 @@ contract LiquidityPool is Pausable, PiAdmin {
         return lToken.balanceOf(_account);
     }
 
-    function deposit(uint _amount, address _onBehalfOf) external nonReentrant whenNotPaused notExpired {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant notExpired {
         _deposit(_amount, _onBehalfOf);
     }
 
-    function deposit(uint _amount) external nonReentrant  whenNotPaused notExpired {
+    function deposit(uint _amount) external nonReentrant notExpired {
         _deposit(_amount, msg.sender);
     }
 
