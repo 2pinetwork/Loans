@@ -27,6 +27,7 @@ interface ILPool is IPool {
 }
 
 interface IPayables {
+    function addBorrower(address _borrower) external;
     function build(uint _amount) external;
     function pay() external;
     function clean() external;

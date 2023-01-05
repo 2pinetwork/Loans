@@ -20,7 +20,6 @@ import "../libraries/Errors.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
-    using EnumerableSet for EnumerableSet.AddressSet;
 
     IERC20Metadata public immutable asset;
     // Liquidity token
@@ -41,8 +40,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     // Map of users address and the timestamp of their last update (userAddress => lastUpdateTimestamp)
     mapping(address => uint40) internal _timestamps;
-    // Keep track of borrowers
-    EnumerableSet.AddressSet internal _borrowers;
 
     // Due date to end the pool
     uint public immutable dueDate;
@@ -280,7 +277,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _timestamps[msg.sender] = uint40(block.timestamp);
 
         asset.safeTransfer(msg.sender, _amount);
-        _borrowers.add(msg.sender);
+        payables.addBorrower(msg.sender);
 
         emit Borrow(msg.sender, _amount);
     }
@@ -298,14 +295,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     // debt on behalf of anyone...
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
-    }
-
-    function borrowersLength() external view returns (uint) {
-        return _borrowers.length();
-    }
-
-    function borrowers(uint _index) external view returns (address) {
-        return _borrowers.at(_index);
     }
 
     function buildMassiveRepay(uint _amount) external nonReentrant {
