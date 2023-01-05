@@ -155,10 +155,10 @@ describe('Liquidity Pool', async function () {
     it('Should not work for expired pool', async function () {
       const { piGlobal, token, LPool } = await loadFixture(deploy)
 
-      const dueDate = (await ethers.provider.getBlock()).timestamp + 3
+      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
       const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
-      await mine(2)
+      await mine(10)
 
       await expect(lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
     })
@@ -425,10 +425,10 @@ describe('Liquidity Pool', async function () {
 
     it('Should not work for expired pool', async function () {
       const { piGlobal, token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 3
+      const dueDate          = (await ethers.provider.getBlock()).timestamp + 10
       const lPool            = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
-      await mine(2)
+      await mine(10)
 
       await expect(lPool.borrow(1)).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
     })
