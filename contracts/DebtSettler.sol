@@ -18,14 +18,13 @@ contract DebtSettler is ReentrancyGuard {
     ILPool public immutable pool;
     IERC20Metadata public immutable asset;
 
-    // Keep track of the debt for each borrower
+    // Keep track of the credit for each borrower
     EnumerableMap.AddressToUintMap internal _records;
     // Keep track of borrowers
     EnumerableSet.AddressSet internal _borrowers;
 
     error InvalidPool();
     error UnknownSender();
-    error ZeroDebt();
 
     constructor(ILPool _pool) {
         if (address(_pool) == address(0)) revert Errors.ZeroAddress();
@@ -54,13 +53,17 @@ contract DebtSettler is ReentrancyGuard {
             _totalDebt += _debts[i];
         }
 
-        if (_totalDebt <= 0) revert ZeroDebt();
+        if (_totalDebt <= 0) return;
         if (_amount > _totalDebt) _amount = _totalDebt;
 
         for (uint i = 0; i < _length; i++) {
-            uint _debtToBePaid = _amount * _debts[i] / _totalDebt;
+            address _borrower = _borrowers.at(i);
+            uint _credit = _amount * _debts[i] / _totalDebt;
+            (, uint _currentCredit) = _records.tryGet(_borrower);
 
-            _records.set(_borrowers.at(i), _debtToBePaid);
+            _credit += _currentCredit; // we have to accumulate each time =)
+
+            _records.set(_borrower, _credit);
         }
     }
 
@@ -71,7 +74,7 @@ contract DebtSettler is ReentrancyGuard {
             (address _borrower, uint _debt) = _records.at(i);
 
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
-            if (gasleft() <= 200_000) break;
+            if (gasleft() <= 50_000) break;
             if (_debt > 0) pool.repayFor(_borrower, _debt);
         }
     }
@@ -83,10 +86,7 @@ contract DebtSettler is ReentrancyGuard {
         for (uint i = 0; i < _records.length(); i++) {
             (address _borrower, uint _debt) = _records.at(i);
 
-            if (_debt <= 0) {
-                _toRemove[_toRemoveLength] = _borrower;
-                _toRemoveLength++;
-            }
+            if (_debt <= 0) _toRemove[_toRemoveLength++] = _borrower;
         }
 
         for (uint i = 0; i < _toRemoveLength; i++) {

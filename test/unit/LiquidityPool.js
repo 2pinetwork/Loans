@@ -1399,17 +1399,6 @@ describe('Liquidity Pool', async function () {
         totalDebt.sub(repayAmount).mul(1000).div(999)
       )
     })
-
-    it('Should revert when no debt', async function () {
-      const { lPool, debtSettler, token, treasury } = await loadFixture(deploy)
-
-      await token.mint(treasury.address, 100e18 + '')
-      await token.connect(treasury).approve(lPool.address, 100e18 + '')
-
-      await expect(lPool.connect(treasury).buildMassiveRepay('100')).to.be.revertedWithCustomError(
-        debtSettler, 'ZeroDebt'
-      )
-    })
   })
 
   describe('Oracle.HealthFactor', async function () {

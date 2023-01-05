@@ -25,9 +25,3 @@ interface ILPool is IPool {
     function borrowersLength() external view returns (uint);
     function borrowers(uint) external view returns (address);
 }
-
-interface IDebtSettler {
-    function addBorrower(address) external;
-    function removeBorrower(address) external;
-    function build(uint) external;
-}

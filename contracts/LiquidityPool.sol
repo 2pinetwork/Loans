@@ -6,13 +6,12 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
 import {SafeBox} from "./SafeBox.sol";
-import {IDebtSettler} from "../interfaces/IPool.sol";
+import {IDebtSettler} from "../interfaces/IDebtSettler.sol";
 
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
@@ -93,11 +92,6 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     modifier fromCollateralPool {
         if (! piGlobal.isValidCollateralPool(msg.sender)) revert UnknownSender();
-        _;
-    }
-
-    modifier onlyDebtSettler {
-        if (msg.sender != address(debtSettler)) revert UnknownSender();
         _;
     }
 
@@ -294,7 +288,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _repay(msg.sender, msg.sender, _amount);
     }
 
-    function repayFor(address _account, uint _amount) external nonReentrant onlyDebtSettler {
+    function repayFor(address _account, uint _amount) external nonReentrant {
         _repay(msg.sender, _account, _amount);
     }
 
