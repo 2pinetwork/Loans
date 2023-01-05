@@ -21,14 +21,13 @@ interface ILPool is IPool {
     function debt(address) external view returns (uint);
     function liquidate(address, address, uint) external;
     function expired() external view returns (bool);
-    function repayFor(address, address, uint) external;
+    function repayFor(address, uint) external;
     function borrowersLength() external view returns (uint);
     function borrowers(uint) external view returns (address);
 }
 
-interface IPayables {
-    function addBorrower(address _borrower) external;
-    function build(uint _amount) external;
-    function pay() external;
-    function clean() external;
+interface IDebtSettler {
+    function addBorrower(address) external;
+    function removeBorrower(address) external;
+    function build(uint) external;
 }

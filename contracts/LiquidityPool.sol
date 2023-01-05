@@ -12,8 +12,8 @@ import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
 import {PiAdmin} from "./PiAdmin.sol";
 import {SafeBox} from "./SafeBox.sol";
+import {IDebtSettler} from "../interfaces/IPool.sol";
 
-import "../interfaces/IPool.sol";
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../libraries/Errors.sol";
@@ -56,8 +56,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     SafeBox public safeBox;
     bool public safeBoxEnabled;
 
-    // Payables
-    IPayables public payables;
+    // Debt settler
+    IDebtSettler public debtSettler;
+
+    error AlreadyInitialized();
+    error DueDateInThePast();
+    error ExpiredPool();
+    error InsufficientFunds();
+    error InsufficientLiquidity();
+    error NoDebt();
+    error UnknownSender();
 
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
         if (_dueDate <= block.timestamp) revert DueDateInThePast();
@@ -88,8 +96,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _;
     }
 
-    modifier onlyPayables {
-        if (msg.sender != address(payables)) revert Errors.UnknownSender();
+    modifier onlyDebtSettler {
+        if (msg.sender != address(debtSettler)) revert UnknownSender();
         _;
     }
 
@@ -148,11 +156,11 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         treasury = _treasury;
     }
 
-    function setPayables(IPayables _payables) external onlyAdmin {
-        if (address(_payables) == address(0)) revert Errors.ZeroAddress();
-        if (address(_payables) == address(payables)) revert Errors.SameValue();
+    function setDebtSettler(IDebtSettler _debtSettler) external onlyAdmin {
+        if (address(_debtSettler) == address(0)) revert Errors.ZeroAddress();
+        if (address(_debtSettler) == address(debtSettler)) revert Errors.SameValue();
 
-        payables = _payables;
+        debtSettler = _debtSettler;
     }
 
     function setSafeBoxEnabled(bool _newState) external onlyAdmin {
@@ -277,7 +285,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _timestamps[msg.sender] = uint40(block.timestamp);
 
         asset.safeTransfer(msg.sender, _amount);
-        payables.addBorrower(msg.sender);
+        debtSettler.addBorrower(msg.sender);
 
         emit Borrow(msg.sender, _amount);
     }
@@ -286,8 +294,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _repay(msg.sender, msg.sender, _amount);
     }
 
-    function repayFor(address _payer, address _account, uint _amount) external onlyPayables {
-        _repay(_payer, _account, _amount);
+    function repayFor(address _account, uint _amount) external nonReentrant onlyDebtSettler {
+        _repay(msg.sender, _account, _amount);
     }
 
     // Only collateralPools can call this
@@ -298,13 +306,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     function buildMassiveRepay(uint _amount) external nonReentrant {
-        asset.safeTransferFrom(msg.sender, address(payables), _amount);
-        payables.build(_amount);
-    }
-
-    function massiveRepay() external nonReentrant {
-        payables.pay();
-        payables.clean();
+        asset.safeTransferFrom(msg.sender, address(debtSettler), _amount);
+        debtSettler.build(_amount);
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {
@@ -332,6 +335,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             // Burn debt & interests
             dToken.burn(_account, _dTokens);
             if (_iTokens > 0) iToken.burn(_account, _iTokens);
+
+            // Remove from debtSettler
+            debtSettler.removeBorrower(_account);
         } else {
             // In case of amount <= diff || amount <= (diff + iTokens)
             _interestToBePaid = _amount;

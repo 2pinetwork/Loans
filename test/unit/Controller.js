@@ -35,27 +35,30 @@ describe('Controller', async function () {
     const [, alice, bob, treasury] = await ethers.getSigners()
     const { piGlobal, oracle }     = await deployOracle()
 
-    const dueDate    = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
-    const Token      = await ethers.getContractFactory('ERC20Mintable')
-    const token      = await Token.deploy('t', 't')
-    const LPool      = await ethers.getContractFactory('LiquidityPool')
-    const CPool      = await ethers.getContractFactory('CollateralPool')
-    const LToken     = await ethers.getContractFactory('LToken')
-    const DToken     = await ethers.getContractFactory('DToken')
-    const lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
-    const cPool      = await CPool.deploy(piGlobal.address, token.address)
-    const lToken     = await LToken.attach(await lPool.lToken())
-    const dToken     = await DToken.attach(await lPool.dToken())
-    const iToken     = await DToken.attach(await lPool.iToken())
-    const TokenFeed  = await ethers.getContractFactory('PriceFeedMock')
-    const tokenFeed  = await TokenFeed.deploy(13e8)
-    const Controller = await ethers.getContractFactory('Controller')
-    const cToken     = await Controller.deploy(cPool.address)
-    const Strat      = await ethers.getContractFactory('MockStrat')
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+    const Token       = await ethers.getContractFactory('ERC20Mintable')
+    const token       = await Token.deploy('t', 't')
+    const LPool       = await ethers.getContractFactory('LiquidityPool')
+    const CPool       = await ethers.getContractFactory('CollateralPool')
+    const LToken      = await ethers.getContractFactory('LToken')
+    const DToken      = await ethers.getContractFactory('DToken')
+    const DebtSettler = await ethers.getContractFactory('DebtSettler')
+    const lPool       = await LPool.deploy(piGlobal.address, token.address, dueDate)
+    const cPool       = await CPool.deploy(piGlobal.address, token.address)
+    const lToken      = await LToken.attach(await lPool.lToken())
+    const dToken      = await DToken.attach(await lPool.dToken())
+    const iToken      = await DToken.attach(await lPool.iToken())
+    const debtSettler = await DebtSettler.deploy(lPool.address)
+    const TokenFeed   = await ethers.getContractFactory('PriceFeedMock')
+    const tokenFeed   = await TokenFeed.deploy(13e8)
+    const Controller  = await ethers.getContractFactory('Controller')
+    const cToken      = await Controller.deploy(cPool.address)
+    const Strat       = await ethers.getContractFactory('MockStrat')
 
     await Promise.all([
       cPool.setController(cToken.address),
       lPool.setTreasury(treasury.address),
+      lPool.setDebtSettler(debtSettler.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
     ])
@@ -78,6 +81,7 @@ describe('Controller', async function () {
       DToken,
       LPool,
       LToken,
+      DebtSettler,
       Strat,
       Token,
       TokenFeed,
@@ -104,14 +108,25 @@ describe('Controller', async function () {
     it('should work with debt for HF > 1.0', async function () {
       const fixtures = await loadFixture(deploy)
 
-      const { alice, bob, cToken, piGlobal, oracle, LPool, TokenFeed } = fixtures
+      const {
+        alice,
+        bob,
+        cToken,
+        piGlobal,
+        oracle,
+        DebtSettler,
+        LPool,
+        TokenFeed
+      } = fixtures
 
-      const token2    = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
-      const tokenFeed = await TokenFeed.deploy(3e8)
-      const dueDate   = (await ethers.provider.getBlock()).timestamp + 20
-      const lPool     = await LPool.deploy(piGlobal.address, token2.address, dueDate)
+      const token2      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
+      const tokenFeed   = await TokenFeed.deploy(3e8)
+      const dueDate     = (await ethers.provider.getBlock()).timestamp + 20
+      const lPool       = await LPool.deploy(piGlobal.address, token2.address, dueDate)
+      const debtSettler = await DebtSettler.deploy(lPool.address)
 
       await Promise.all([
+        lPool.setDebtSettler(debtSettler.address),
         oracle.addPriceOracle(token2.address, tokenFeed.address),
         piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
