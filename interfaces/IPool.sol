@@ -21,5 +21,6 @@ interface ILPool is IPool {
     function debt(address) external view returns (uint);
     function liquidate(address, address, uint) external;
     function expired() external view returns (bool);
-    function repay(address, address, uint) external;
+    function repayFor(address, uint) external;
+    function treasury() external view returns (address);
 }
