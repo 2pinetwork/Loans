@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./PiAdmin.sol";
 import "../interfaces/IOracle.sol";
+import "../libraries/Errors.sol";
 
 contract PiGlobal is PiAdmin {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -13,10 +14,10 @@ contract PiGlobal is PiAdmin {
     EnumerableSet.AddressSet internal liquidityPoolsSet;
 
     address public oracle;
+    address public treasury;
 
     error AlreadyExists();
     error UnknownPool();
-    error ZeroAddress();
     error WrongOracle();
 
     event NewOracle(address _old, address _new);
@@ -24,9 +25,12 @@ contract PiGlobal is PiAdmin {
     event NewLiquidityPool(address);
     event CollateralPoolRemoved(address);
     event LiquidityPoolRemoved(address);
+    event NewTreasury(address _old, address _new);
 
-    function setOracle(address _oracle) external onlyAdmin {
-        if (_oracle == address(0)) revert ZeroAddress();
+    constructor() { treasury = msg.sender; }
+
+    function setOracle(address _oracle) external onlyAdmin nonReentrant {
+        if (_oracle == address(0)) revert Errors.ZeroAddress();
         if (IOracle(_oracle).piGlobal() != address(this)) revert WrongOracle();
 
         emit NewOracle(oracle, _oracle);
@@ -34,24 +38,34 @@ contract PiGlobal is PiAdmin {
         oracle = _oracle;
     }
 
-    function addCollateralPool(address _pool) external onlyAdmin {
-        if (_pool == address(0)) revert ZeroAddress();
+    // To be used by default
+    function setTreasury(address _treasury) external onlyAdmin nonReentrant {
+        if (_treasury == address(0)) revert Errors.ZeroAddress();
+        if (_treasury == treasury) revert Errors.SameValue();
+
+        emit NewTreasury(treasury, _treasury);
+
+        treasury = _treasury;
+    }
+
+    function addCollateralPool(address _pool) external onlyAdmin nonReentrant {
+        if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! collateralPoolsSet.add(_pool)) revert AlreadyExists();
 
         emit NewCollateralPool(_pool);
     }
 
-    function removeCollateralPool(address _pool) external onlyAdmin {
-        if (_pool == address(0)) revert ZeroAddress();
+    function removeCollateralPool(address _pool) external onlyAdmin nonReentrant {
+        if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! collateralPoolsSet.remove(_pool)) revert UnknownPool();
 
         emit CollateralPoolRemoved(_pool);
     }
 
-    function addLiquidityPool(address _pool) external onlyAdmin {
-        if (_pool == address(0)) revert ZeroAddress();
+    function addLiquidityPool(address _pool) external onlyAdmin nonReentrant {
+        if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! liquidityPoolsSet.add(_pool)) revert AlreadyExists();
 
@@ -60,8 +74,8 @@ contract PiGlobal is PiAdmin {
         emit NewLiquidityPool(_pool);
     }
 
-    function removeLiquidityPool(address _pool) external onlyAdmin {
-        if (_pool == address(0)) revert ZeroAddress();
+    function removeLiquidityPool(address _pool) external onlyAdmin nonReentrant {
+        if (_pool == address(0)) revert Errors.ZeroAddress();
 
         if (! liquidityPoolsSet.remove(_pool)) revert UnknownPool();
 

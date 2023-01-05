@@ -53,6 +53,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     ) {
         asset = ERC20(_pool.asset());
         piGlobal = IPiGlobal(_pool.piGlobal());
+        treasury = piGlobal.treasury();
         pool = address(_pool);
     }
 
