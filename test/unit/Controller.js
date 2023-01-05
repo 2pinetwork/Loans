@@ -156,11 +156,13 @@ describe('Controller', async function () {
 
       const { bob, cToken } = fixtures
 
+      const treasury = await cToken.treasury()
+
       await expect(cToken.connect(bob).setTreasury(bob.address)).to.be.revertedWith('Ownable: caller is not the owner')
 
-      expect(await cToken.treasury()).to.be.equal(ZERO_ADDRESS)
+      expect(await cToken.treasury()).to.be.equal(treasury)
 
-      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(ZERO_ADDRESS, bob.address)
+      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(treasury, bob.address)
     })
 
     it('should not work', async function () {
@@ -168,7 +170,9 @@ describe('Controller', async function () {
 
       const { bob, cToken } = fixtures
 
-      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(ZERO_ADDRESS, bob.address)
+      const treasury = await cToken.treasury()
+
+      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(treasury, bob.address)
 
       await expect(cToken.setTreasury(bob.address)).to.be.revertedWithCustomError(cToken, 'SameValue')
 

@@ -77,7 +77,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         // Interest token
         iToken = new DToken(asset);
 
-        treasury = msg.sender;
+        treasury = _piGlobal.treasury();
         piGlobal = _piGlobal;
     }
 
