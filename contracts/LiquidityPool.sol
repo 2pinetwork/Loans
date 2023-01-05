@@ -279,7 +279,8 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
         _timestamps[msg.sender] = uint40(block.timestamp);
 
         asset.safeTransfer(msg.sender, _amount);
-        debtSettler.addBorrower(msg.sender);
+
+        if (_hasDebtSettler()) debtSettler.addBorrower(msg.sender);
 
         emit Borrow(msg.sender, _amount);
     }
@@ -331,7 +332,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
             if (_iTokens > 0) iToken.burn(_account, _iTokens);
 
             // Remove from debtSettler
-            debtSettler.removeBorrower(_account);
+            if (_hasDebtSettler()) debtSettler.removeBorrower(_account);
         } else {
             // In case of amount <= diff || amount <= (diff + iTokens)
             _interestToBePaid = _amount;
@@ -475,5 +476,9 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function _safeBalance() internal view returns (uint) {
         return safeBoxEnabled ? safeBox.balance() : 0;
+    }
+
+    function _hasDebtSettler() internal view returns (bool) {
+        return address(debtSettler) != address(0);
     }
 }
