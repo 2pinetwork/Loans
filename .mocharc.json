@@ -1,0 +1,11 @@
+{
+  "parallel":   false,
+  "slow":       "2000",
+  "full-trace": true,
+  "bail":       false,
+  "inspect":    false,
+  "timeout":    60000,
+  "exit":       true,
+  "recursive":  true,
+  "require":    ["hardhat/register"]
+}

@@ -17,8 +17,10 @@ contract LToken is ERC20 {
         pool = msg.sender;
     }
 
+    error NotPool();
+
     modifier onlyPool() {
-        require(msg.sender == pool, "!Pool");
+        if (msg.sender != pool) revert NotPool();
         _;
     }
 

@@ -1,16 +1,6 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
-
-const deployOracle = async function () {
-  const PiGlobal = await ethers.getContractFactory('PiGlobal')
-  const Oracle   = await ethers.getContractFactory('Oracle')
-  const piGlobal = await PiGlobal.deploy()
-  const oracle   = await Oracle.deploy(piGlobal.address)
-
-  await piGlobal.setOracle(oracle.address)
-
-  return { piGlobal, oracle }
-}
+const { deployOracle, ZERO_ADDRESS } = require('./helpers')
 
 const setupCollateral = async function (fixtures) {
   const {
@@ -46,7 +36,8 @@ describe('Controller', async function () {
     const { piGlobal, oracle }     = await deployOracle()
 
     const dueDate    = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
-    const token      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+    const Token      = await ethers.getContractFactory('ERC20Mintable')
+    const token      = await Token.deploy('t', 't')
     const LPool      = await ethers.getContractFactory('LiquidityPool')
     const CPool      = await ethers.getContractFactory('CollateralPool')
     const LToken     = await ethers.getContractFactory('LToken')
@@ -60,6 +51,7 @@ describe('Controller', async function () {
     const tokenFeed  = await TokenFeed.deploy(13e8)
     const Controller = await ethers.getContractFactory('Controller')
     const cToken     = await Controller.deploy(cPool.address)
+    const Strat      = await ethers.getContractFactory('MockStrat')
 
     await Promise.all([
       cPool.setController(cToken.address),
@@ -82,10 +74,12 @@ describe('Controller', async function () {
       token,
       tokenFeed,
       treasury,
-      DToken,
-      LToken,
       CPool,
+      DToken,
       LPool,
+      LToken,
+      Strat,
+      Token,
       TokenFeed,
     }
   }
@@ -153,6 +147,198 @@ describe('Controller', async function () {
 
       // Check still HF > 1.0 and less than before transfer
       expect(await oracle.healthFactor(bob.address)).to.be.above(1.0e18 + '').to.be.below(hf)
+    })
+  })
+
+  describe('setTreasury', async function () {
+    it('should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(cToken.connect(bob).setTreasury(bob.address)).to.be.revertedWith('Ownable: caller is not the owner')
+
+      expect(await cToken.treasury()).to.be.equal(ZERO_ADDRESS)
+
+      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(ZERO_ADDRESS, bob.address)
+    })
+
+    it('should not work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(cToken.setTreasury(bob.address)).to.emit(cToken, 'NewTreasury').withArgs(ZERO_ADDRESS, bob.address)
+
+      await expect(cToken.setTreasury(bob.address)).to.be.revertedWithCustomError(cToken, 'SameValue')
+
+      await expect(cToken.setTreasury(ZERO_ADDRESS)).to.be.revertedWithCustomError(cToken, 'ZeroAddress')
+    })
+  })
+
+  describe('setWithdrawFee', async function () {
+    it('should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(cToken.connect(bob).setWithdrawFee(1)).to.be.revertedWith('Ownable: caller is not the owner')
+
+      await expect(cToken.setWithdrawFee(1)).to.emit(cToken, 'NewWithdrawFee').withArgs(0, 1)
+    })
+
+    it('should not work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      await expect(cToken.setWithdrawFee(0)).to.be.revertedWithCustomError(cToken, 'SameValue')
+
+      await expect(cToken.setWithdrawFee(101)).to.be.revertedWithCustomError(cToken, 'GreaterThan', 'MAX_WITHDRAW_FEE')
+    })
+  })
+
+  describe('Deposit', async function () {
+    it('setDepositLimit should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      expect(await cToken.availableDeposit()).to.be.equal(ethers.constants.MaxUint256)
+
+      await expect(cToken.setDepositLimit(1)).to.emit(cToken, 'NewDepositLimit').withArgs(0, 1)
+
+      expect(await cToken.availableDeposit()).to.be.equal(1)
+    })
+
+    it('setDepositLimit should not work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      await expect(cToken.setDepositLimit(0)).to.be.revertedWithCustomError(cToken, 'SameValue')
+    })
+
+    it('setUserDepositLimit should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      expect(await cToken.availableUserDeposit(bob.address)).to.be.equal(ethers.constants.MaxUint256)
+
+      await expect(cToken.setUserDepositLimit(1)).to.emit(cToken, 'NewUserDepositLimit').withArgs(0, 1)
+
+      expect(await cToken.availableUserDeposit(bob.address)).to.be.equal(1)
+    })
+
+    it('setUserDepositLimit should not work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      await expect(cToken.setUserDepositLimit(0)).to.be.revertedWithCustomError(cToken, 'SameValue')
+    })
+  })
+
+  describe('Strategy', async function () {
+
+    it('setStrategy should work', async function () {
+      const { cToken, Strat } = await loadFixture(deploy)
+
+      const strategy = await Strat.deploy(cToken.asset())
+
+      await expect(cToken.setStrategy(strategy.address)).to.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+    })
+
+    it('setStrategy should not work', async function () {
+      const { cToken, token, Strat } = await loadFixture(deploy)
+
+      const strategy = await Strat.deploy(cToken.asset())
+
+      await expect(cToken.setStrategy(strategy.address)).to.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+
+      await expect(cToken.setStrategy(strategy.address)).to.be.revertedWithCustomError(cToken, 'SameValue')
+
+      await token.mint(strategy.address, 1)
+      await strategy.breakRetire(true)
+
+      // retire not return the entire balance
+      await expect(cToken.setStrategy(ZERO_ADDRESS)).to.be.revertedWithCustomError(cToken, 'StrategyStillHasDeposits')
+    })
+
+    it('setStrategy should work for multiple strats', async function () {
+      const { cToken, Strat } = await loadFixture(deploy)
+
+      const strategy  = await Strat.deploy(cToken.asset())
+      const strategy2 = await Strat.deploy(cToken.asset())
+
+      await expect(cToken.setStrategy(strategy.address)).to.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+
+      await expect(cToken.setStrategy(strategy2.address)).to.emit(
+        cToken, 'StrategyChanged'
+      ).withArgs(
+        strategy.address, strategy2.address
+      )
+
+      await expect(cToken.setStrategy(ZERO_ADDRESS)).to.emit(
+        cToken, 'StrategyChanged'
+      ).withArgs(
+        strategy2.address, ZERO_ADDRESS
+      )
+    })
+
+    it('setStrategy should not work for other token', async function () {
+      const { cToken, Strat, Token } = await loadFixture(deploy)
+
+      const t        = await Token.deploy('T2', 'T2')
+      const strategy = await Strat.deploy(t.address)
+
+      await expect(cToken.setStrategy(strategy.address)).to.be.revertedWithCustomError(cToken, 'NotSameAsset')
+    })
+
+    it('deposit & withdraw should work with strategy & wFee', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cPool, cToken, token, treasury, Strat } = fixtures
+
+      const strategy = await Strat.deploy(await cToken.asset())
+
+      await cToken.setWithdrawFee(10)
+      await cToken.setTreasury(treasury.address)
+
+      await expect(cToken.setStrategy(strategy.address)).to.be.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+
+      // test deposit
+      await setupCollateral(fixtures)
+
+      // Run the afterWithdraw deposit
+      await token.mint(cToken.address, 1)
+
+      await expect(await cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
+
+      await strategy.pause(true)
+
+      await expect(await cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
+
+    })
+
+    it('deposit & withdraw should revert with CouldNotWithdrawFromStrategy', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cPool, cToken, treasury, Strat } = fixtures
+
+      const strategy = await Strat.deploy(await cToken.asset())
+
+      await cToken.setWithdrawFee(10)
+      await cToken.setTreasury(treasury.address)
+
+      await expect(cToken.setStrategy(strategy.address)).to.be.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+
+      await setupCollateral(fixtures)
+      // Just for testing purposes
+      await strategy.breakRetire(true)
+
+      await expect(cPool.connect(bob)['withdraw(uint256)'](1)).to.be.revertedWithCustomError(cToken, 'CouldNotWithdrawFromStrategy')
     })
   })
 })

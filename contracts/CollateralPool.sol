@@ -8,25 +8,11 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import  "./PiAdmin.sol";
-import {Controller} from "./Controller.sol";
-
+import "../interfaces/IController.sol";
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
 import {ILPool} from "../interfaces/IPool.sol";
-
-interface IController {
-    function pool() external view returns (address);
-    function decimals() external view returns (uint8);
-    function pricePerShare() external view returns (uint);
-    function piGlobal() external view returns (address);
-    function asset() external view returns (address);
-    function balanceOf(address _account) external view returns (uint);
-    function balance() external view returns (uint);
-    function totalSupply() external view returns (uint);
-    function deposit(address _onBehalfOf, uint _amount) external returns (uint);
-    function withdraw(address _to, uint _shares) external returns (uint);
-    function withdrawForLiquidation(address _liquidated, uint _shares) external returns (uint);
-}
+import "../libraries/Errors.sol";
 
 contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
@@ -43,19 +29,14 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     uint public collateralRatio;
     uint public constant MAX_COLLATERAL_RATIO = 1e18;
 
-    error CantLiquidate(string);
-    error GreaterThan(string);
-    error MaxRatio();
-    error SameAddress();
-    error SameRatio();
-    error SameValue();
-    error ZeroAddress();
-    error ZeroShares();
-    error InvalidController();
     error AlreadyInitialized();
+    error CantLiquidate(string);
+    error InvalidController();
+    error MaxRatio();
+    error NoFundsWithdrawn();
 
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset) {
-        if (address(_piGlobal) == address(0)) revert ZeroAddress();
+        if (address(_piGlobal) == address(0)) revert Errors.ZeroAddress();
 
         // just to check
         _piGlobal.collateralPools();
@@ -77,12 +58,10 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     event ControllerSet(address _controller);
 
     function setController(IController _controller) external onlyAdmin {
-        if (address(_controller) == address(0)) revert ZeroAddress();
+        if (address(_controller) == address(0)) revert Errors.ZeroAddress();
         if (address(controller) != address(0)) revert AlreadyInitialized();
-
+        // Controller constructor takes pool asset & piGlobal
         if (_controller.pool() != address(this)) revert InvalidController();
-        if (_controller.piGlobal() != address(piGlobal)) revert InvalidController();
-        if (_controller.asset() != address(asset)) revert InvalidController();
 
         emit ControllerSet(address(_controller));
 
@@ -90,8 +69,8 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     }
 
     function setCollateralRatio(uint _collateralRatio) external onlyAdmin {
-        if (_collateralRatio == collateralRatio) revert SameValue();
-        if (_collateralRatio > MAX_COLLATERAL_RATIO) revert GreaterThan("MAX_COLLATERAL_RATIO");
+        if (_collateralRatio == collateralRatio) revert Errors.SameValue();
+        if (_collateralRatio > MAX_COLLATERAL_RATIO) revert Errors.GreaterThan("MAX_COLLATERAL_RATIO");
 
         emit NewCollateralRatio(_collateralRatio, collateralRatio);
 
@@ -137,9 +116,9 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
         IOracle _oracle = IOracle(piGlobal.oracle());
 
         // Get the maximum amount of liquidable debt and its equivalent collateral
+        // reverts if _liquidableCollateral or _liquidableDebt is 0
         (uint _liquidableCollateral, uint _liquidableDebt) = _oracle.getLiquidableAmounts(_account, _liquidityPool);
 
-        if (_liquidableCollateral <= 0 || _liquidableDebt <= 0) revert CantLiquidate("No liquidable amount");
 
         uint _collateralToBeUsed = _liquidableCollateral;
 
@@ -158,8 +137,9 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
 
         // if withdrawn for anyreason is different than _collateralToBeUsed
         // we calculate the _amount based on the oracle liquidation ratio
-        if (_withdrawn != _collateralToBeUsed)
+        if (_withdrawn != _collateralToBeUsed) {
             _amount = _withdrawn * _liquidableDebt / _liquidableCollateral;
+        }
 
         if (_amount > _liquidableDebt) revert CantLiquidate("_withdrawn > _liquidableDebt");
 
@@ -178,6 +158,8 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     function _precision() internal view returns (uint) { return 10 ** decimals(); }
 
     function _deposit(uint _amount, address _onBehalfOf) internal {
+        if (_amount <= 0) revert Errors.ZeroAmount();
+
         // Get asset from sender
         asset.safeTransferFrom(msg.sender, address(this), _amount);
         // Deposit in controller
@@ -188,10 +170,10 @@ contract CollateralPool is PiAdmin, Pausable, ReentrancyGuard {
     }
 
     function _withdraw(uint _shares, address _to) internal returns (uint) {
-        if (_shares <= 0) revert ZeroShares();
+        if (_shares <= 0) revert Errors.ZeroShares();
 
         uint _withdrawn = controller.withdraw(msg.sender, _shares);
-        require(_withdrawn > 0, "No funds withdrawn");
+        if (_withdrawn <= 0) revert NoFundsWithdrawn();
 
         asset.safeTransfer(_to, _withdrawn);
 

@@ -5,13 +5,13 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {ICPool} from "../interfaces/IPool.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../interfaces/IStrategy.sol";
 import "../interfaces/IOracle.sol";
+import "../libraries/Errors.sol";
 
 contract Controller is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
@@ -39,12 +39,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     event NewDepositLimit(uint oldLimit, uint newLimit);
     event NewUserDepositLimit(uint oldLimit, uint newLimit);
     event WithdrawalFee(uint amount);
+    event NewWithdrawFee(uint oldFee, uint newFee);
 
-    error ZeroAmount();
-    error ZeroAddress();
+    error CouldNotWithdrawFromStrategy();
+    error InsufficientBalance();
+    error NotPool();
     error NotSameAsset();
     error StrategyStillHasDeposits();
-    error InsufficientBalance();
 
     constructor(ICPool _pool) ERC20(
         string(abi.encodePacked("2pi Collateral ", ERC20(_pool.asset()).symbol())),
@@ -56,7 +57,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     modifier onlyPool() {
-        require(msg.sender == pool, "Not from Pool");
+        if (msg.sender != pool) revert NotPool();
         _;
     }
 
@@ -70,8 +71,9 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setTreasury(address _treasury) external onlyOwner nonReentrant {
-        require(_treasury != treasury, "Same address");
-        require(_treasury != address(0), "!ZeroAddress");
+        if (_treasury == treasury) revert Errors.SameValue();
+        if (_treasury == address(0)) revert Errors.ZeroAddress();
+
         emit NewTreasury(treasury, _treasury);
 
         treasury = _treasury;
@@ -80,7 +82,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     // ZeroAddress means that there's no strategy to put the assets, so the assets
     // will be kept in the controller (no yield)
     function setStrategy(IStrategy _newStrategy) external onlyOwner nonReentrant {
-        require(_newStrategy != strategy, "Same strategy");
+        if (_newStrategy == strategy) revert Errors.SameValue();
 
         if (address(_newStrategy) != address(0) && _newStrategy.want() != address(asset)) revert NotSameAsset();
 
@@ -98,15 +100,16 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setWithdrawFee(uint _fee) external onlyOwner nonReentrant {
-        require(_fee != withdrawFee, "Same fee");
-        require(_fee <= MAX_WITHDRAW_FEE, "!cap");
+        if (_fee == withdrawFee) revert Errors.SameValue();
+        if (_fee > MAX_WITHDRAW_FEE) revert Errors.GreaterThan('MAX_WITHDRAW_FEE');
+
+        emit NewWithdrawFee(withdrawFee, _fee);
 
         withdrawFee = _fee;
     }
 
     function setDepositLimit(uint _amount) external onlyOwner nonReentrant {
-        require(_amount != depositLimit, "Same limit");
-        require(_amount >= 0, "Can't be negative");
+        if (_amount == depositLimit) revert Errors.SameValue();
 
         emit NewDepositLimit(depositLimit, _amount);
 
@@ -114,8 +117,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setUserDepositLimit(uint _amount) external onlyOwner nonReentrant {
-        require(_amount != userDepositLimit, "Same limit");
-        require(_amount >= 0, "Can't be negative");
+        if (_amount == userDepositLimit) revert Errors.SameValue();
 
         emit NewUserDepositLimit(userDepositLimit, _amount);
 
@@ -123,10 +125,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function deposit(address _senderUser, uint _amount) external nonReentrant onlyPool returns (uint _shares) {
-        require(_amount > 0, "Insufficient amount");
+        if (_amount <= 0) revert Errors.ZeroAmount();
         _checkDepositLimit(_senderUser, _amount);
 
-        if (_withStrat()) IStrategy(strategy).beforeMovement();
+        if (_withStrat()) strategy.beforeMovement();
 
         uint _before = balance();
 
@@ -146,45 +148,30 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Withdraw partial funds, normally used with a vault withdrawal
-    function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint _amount) {
-        require(_shares > 0, "Insufficient shares");
-        if (_withStrat()) IStrategy(strategy).beforeMovement();
+    function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint) {
+        if (_shares <= 0) revert Errors.ZeroShares();
+        if (_withStrat()) strategy.beforeMovement();
 
-        _amount = (balance() * _shares) / totalSupply();
+        uint _amount = (balance() * _shares) / totalSupply();
 
         // Override with what really have been withdrawn
-        _amount = _withdraw(_senderUser, _shares, _amount);
-        uint _withdrawalFee = _amount * withdrawFee / RATIO_PRECISION;
-
-        asset.safeTransfer(pool, _amount - _withdrawalFee);
-        if (_withdrawalFee > 0) {
-            asset.safeTransfer(treasury, _withdrawalFee);
-            emit WithdrawalFee(_withdrawalFee);
-        }
-
-        if (!_strategyPaused()) { _strategyDeposit(); }
+        return _withdraw(_senderUser, _shares, _amount, true);
     }
 
     // Same as withdraw, but without withdrawal fee
     // and if the withdrawn amount is more than the requested amount
     // it will be returned to the strategy. We don't want to liquidate more than needed
     function withdrawForLiquidation(address _senderUser, uint _expectedAmount) external onlyPool nonReentrant returns (uint _withdrawn) {
-        require(_expectedAmount > 0, "Zero");
-        if (_withStrat()) IStrategy(strategy).beforeMovement();
+        if (_expectedAmount <= 0) revert Errors.ZeroAmount();
+        if (_withStrat()) strategy.beforeMovement();
 
         uint _shares = _expectedAmount * totalSupply() / balance();
 
-        _withdrawn = _withdraw(_senderUser, _shares, _expectedAmount);
-
-        if (_withdrawn > _expectedAmount) _withdrawn = _expectedAmount;
-
-        asset.safeTransfer(pool, _withdrawn);
-
-        if (!_strategyPaused()) { _strategyDeposit(); }
+        return _withdraw(_senderUser, _shares, _expectedAmount, false);
     }
 
-    function _withdraw(address _senderUser, uint _shares, uint _amount) internal returns (uint) {
-        if (_amount <= 0 || _shares <= 0) revert ZeroAmount();
+    function _withdraw(address _senderUser, uint _shares, uint _amount, bool _withFee) internal returns (uint) {
+        if (_amount <= 0 || _shares <= 0) revert Errors.ZeroAmount();
 
         _burn(_senderUser, _shares);
 
@@ -198,22 +185,33 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
             // withdraw will revert if anyything weird happend with the
             // transfer back but just in case we ensure that the withdraw is
             // positive
-            uint withdrawn = IStrategy(strategy).withdraw(_diff);
-            require(withdrawn > 0, "Can't withdraw from strategy...");
+            uint withdrawn = strategy.withdraw(_diff);
+            if (withdrawn <= 0) revert CouldNotWithdrawFromStrategy();
 
             _balance = assetBalance();
-            if (_balance < _amount) { _amount = _balance; }
+            if (_balance < _amount) _amount = _balance;
         }
+
+        if (_withFee) {
+            uint _withdrawalFee = _amount * withdrawFee / RATIO_PRECISION;
+
+            if (_withdrawalFee > 0) {
+                _amount -= _withdrawalFee;
+
+                asset.safeTransfer(treasury, _withdrawalFee);
+                emit WithdrawalFee(_withdrawalFee);
+            }
+        }
+
+        asset.safeTransfer(pool, _amount);
+
+        _strategyDeposit();
 
         return _amount;
     }
 
-    function _strategyPaused() internal view returns (bool){
-        return _withStrat() && IStrategy(strategy).paused();
-    }
-
     function strategyBalance() public view returns (uint){
-        return _withStrat() ? IStrategy(strategy).balance() : 0;
+        return _withStrat() ? strategy.balance() : 0;
     }
 
     function assetBalance() public view returns (uint) { return asset.balanceOf(address(this)); }
@@ -250,6 +248,8 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
     function _strategyDeposit() internal {
         if (! _withStrat()) return;
+        // If the line before didn't break the flow, strategy is present
+        if (strategy.paused()) return;
 
         uint _amount = assetBalance();
 
@@ -262,13 +262,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
     function _checkDepositLimit(address _user, uint _amount) internal view {
         // 0 depositLimit means no-limit
-        if (depositLimit > 0) {
-            require(balance() + _amount <= depositLimit, "Max depositLimit reached");
-        }
+        if (depositLimit > 0 && (balance() + _amount) > depositLimit)
+            revert Errors.GreaterThan('depositLimit');
 
-        if (userDepositLimit > 0) {
-            require(_amount <= availableUserDeposit(_user), "Max userDepositLimit reached");
-        }
+        if (userDepositLimit > 0 && _amount > availableUserDeposit(_user))
+            revert Errors.GreaterThan('userDepositLimit');
     }
 
     function pricePerShare() public view returns (uint) {

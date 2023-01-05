@@ -2,9 +2,10 @@ require('@nomicfoundation/hardhat-toolbox')
 require('@nomicfoundation/hardhat-chai-matchers')
 require('solidity-coverage')
 
-const loadAccounts = () => {
-  const fs = require('fs')
+const fs = require('fs')
 
+
+const loadAccounts = () => {
   if (process.env.DEPLOYER) {
     return [process.env.DEPLOYER]
   } else if (fs.existsSync('.accounts')) {
@@ -15,6 +16,7 @@ const loadAccounts = () => {
 }
 
 const accounts = loadAccounts()
+const mochaSettings = JSON.parse(fs.readFileSync('.mocharc.json'))
 
 module.exports = {
   solidity: {
@@ -43,5 +45,6 @@ module.exports = {
       accounts:   accounts,
       network_id: 137
     }
-  }
+  },
+  mocha: mochaSettings,
 }

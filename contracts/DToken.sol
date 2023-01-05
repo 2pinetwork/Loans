@@ -16,10 +16,11 @@ contract DToken is ERC20 {
         pool = msg.sender;
     }
 
+    error NotPool();
     error TransferNotSupported();
 
     modifier onlyPool() {
-        require(msg.sender == pool, "!Pool");
+        if (msg.sender != pool) revert NotPool();
         _;
     }
 

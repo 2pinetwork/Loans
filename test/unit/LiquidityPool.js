@@ -1,7 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { ZERO_ADDRESS, mine } = require('./helpers')
+const { deployOracle, mine, ZERO_ADDRESS } = require('./helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee
@@ -19,17 +19,6 @@ const getInterest = async function (lPool, base, seconds) {
   const PRECISION = ethers.utils.parseUnits('1', 18)
 
   return base.mul(rate.add(piFee)).mul(seconds).div(SECONDS_PER_YEAR).div(PRECISION)
-}
-
-const deployOracle = async function () {
-  const PiGlobal = await ethers.getContractFactory('PiGlobal')
-  const Oracle   = await ethers.getContractFactory('Oracle')
-  const piGlobal = await PiGlobal.deploy()
-  const oracle   = await Oracle.deploy(piGlobal.address)
-
-  await piGlobal.setOracle(oracle.address)
-
-  return { piGlobal, oracle }
 }
 
 const setupCollateral = async function (fixtures) {
@@ -146,6 +135,21 @@ describe('Liquidity Pool', async function () {
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
       expect(await lPool.balance()).to.be.equal(2008)
+    })
+
+    it('Should work on behalf of', async function () {
+      const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(lPool.address, 1000)
+
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(0)
+
+      // Overloading Ethers-v6
+      expect(await lPool.connect(bob)['deposit(uint256,address)'](1000, alice.address)).to.emit(lPool, 'Deposit')
+      expect(await lPool.balanceOf(alice.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
     })
 
     it('Should not work for expired pool', async function () {
@@ -1218,6 +1222,19 @@ describe('Liquidity Pool', async function () {
         token, 'Transfer' // safe balance
       ).withArgs(
         safeBox.address, lPool.address, repayment.sub(piFee)
+      )
+
+      // Just to cover the case enable & disable again
+      await expect(lPool.setSafeBoxEnabled(true)).to.emit(lPool, 'SafeBoxChanged').withArgs(
+        safeBox.address, true
+      ).to.not.emit(
+        token, 'Transfer' // safe balance
+      )
+
+      await expect(lPool.setSafeBoxEnabled(false)).to.emit(lPool, 'SafeBoxChanged').withArgs(
+        safeBox.address, false
+      ).to.not.emit(
+        token, 'Transfer' // previous safe balance was 0
       )
 
       expect(await token.balanceOf(lPool.address)).to.be.equal(lPoolBal.add(repayment.sub(piFee)))

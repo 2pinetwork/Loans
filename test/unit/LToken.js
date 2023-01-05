@@ -42,7 +42,7 @@ describe('LToken', async function () {
 
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
 
-      await expect(lToken.connect(bob).mint(bob.address, 13)).to.be.revertedWith('!Pool')
+      await expect(lToken.connect(bob).mint(bob.address, 13)).to.be.revertedWithCustomError(lToken, 'NotPool')
 
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
     })
@@ -72,7 +72,7 @@ describe('LToken', async function () {
 
       expect(await lToken.balanceOf(bob.address)).to.be.equal(13)
 
-      await expect(lToken.connect(bob).burn(bob.address, 13)).to.be.revertedWith('!Pool')
+      await expect(lToken.connect(bob).burn(bob.address, 13)).to.be.revertedWithCustomError(lToken, 'NotPool')
 
       expect(await lToken.balanceOf(bob.address)).to.be.equal(13)
     })

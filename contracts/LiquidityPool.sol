@@ -14,21 +14,7 @@ import {SafeBox} from "./SafeBox.sol";
 
 import "../interfaces/IOracle.sol";
 import "../interfaces/IPiGlobal.sol";
-
-library Errors {
-    error DueDateInThePast();
-    error ZeroAddress();
-    error SameValue();
-    error InsufficientFunds();
-    error NoDebt();
-    error ZeroShares();
-    error ZeroAmount();
-    error InsufficientLiquidity();
-    error GreaterThan(string);
-    error AlreadyInitialized();
-    error UnknownSender();
-    error ExpiredPool();
-}
+import "../libraries/Errors.sol";
 
 contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     using SafeERC20 for IERC20Metadata;
@@ -68,8 +54,16 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     SafeBox public safeBox;
     bool public safeBoxEnabled;
 
+    error AlreadyInitialized();
+    error DueDateInThePast();
+    error ExpiredPool();
+    error InsufficientFunds();
+    error InsufficientLiquidity();
+    error NoDebt();
+    error UnknownSender();
+
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
-        if (_dueDate <= block.timestamp) revert Errors.DueDateInThePast();
+        if (_dueDate <= block.timestamp) revert DueDateInThePast();
         if (address(_piGlobal) == address(0)) revert Errors.ZeroAddress();
         if (_piGlobal.oracle() == address(0)) revert Errors.ZeroAddress();
 
@@ -88,12 +82,12 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     modifier notExpired() {
-        if (expired()) revert Errors.ExpiredPool();
+        if (expired()) revert ExpiredPool();
         _;
     }
 
     modifier fromCollateralPool {
-        if (! piGlobal.isValidCollateralPool(msg.sender)) revert Errors.UnknownSender();
+        if (! piGlobal.isValidCollateralPool(msg.sender)) revert UnknownSender();
         _;
     }
 
@@ -117,7 +111,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function setInterestRate(uint _newInterestRate) external onlyAdmin {
         if (_newInterestRate > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
-        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
+        if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
         emit NewInterestInterestRate(interestRate, _newInterestRate);
 
@@ -127,7 +121,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     function setOriginatorFee(uint _newOriginatorFee) external onlyAdmin {
         // No more than 100% JIC
         if (_newOriginatorFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
-        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
+        if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
         emit NewOriginatorFee(originatorFee, _newOriginatorFee);
 
@@ -136,7 +130,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function setPiFee(uint _piFee) external onlyAdmin {
         if (_piFee > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
-        if (dToken.totalSupply() > 0) revert Errors.AlreadyInitialized();
+        if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
         emit NewPiFee(piFee, _piFee);
 
@@ -234,7 +228,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
         uint _amount = (_balanceForSharesCalc() * _shares) / lToken.totalSupply();
 
-        if (_amount > balance()) revert Errors.InsufficientLiquidity();
+        if (_amount > balance()) revert InsufficientLiquidity();
 
         lToken.burn(msg.sender, _shares);
 
@@ -249,7 +243,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
 
     function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
         if (_amount <= 0) revert Errors.ZeroAmount();
-        if (_amount > balance()) revert Errors.InsufficientLiquidity();
+        if (_amount > balance()) revert InsufficientLiquidity();
         _checkBorrowAmount(_amount);
 
         // Originator fee is based on the borrowed amount,
@@ -283,13 +277,15 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     }
 
     // Only collateralPools can call this
+    // if anyone could call this, any unlimited allowance to this contract could be used to repay
+    // debt on behalf of anyone...
     function liquidate(address _payer, address _account, uint _amount) external nonReentrant fromCollateralPool {
         _repay(_payer, _account, _amount);
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {
         if (_amount <= 0) revert Errors.ZeroAmount();
-        if (_timestamps[_account] == 0) revert Errors.NoDebt();
+        if (_timestamps[_account] == 0) revert NoDebt();
 
         (
             uint _dTokens,
@@ -405,7 +401,7 @@ contract LiquidityPool is Pausable, ReentrancyGuard, PiAdmin {
     function _checkBorrowAmount(uint _amount) internal view {
         uint _available = _oracle().availableCollateralForAsset(msg.sender, address(asset));
 
-        if (_amount > _available) revert Errors.InsufficientFunds();
+        if (_amount > _available) revert InsufficientFunds();
     }
 
     function _originatorFeeFor(uint _amount) internal view returns (uint) {

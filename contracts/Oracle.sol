@@ -8,6 +8,7 @@ import "./PiAdmin.sol";
 import "../interfaces/IChainLink.sol";
 import "../interfaces/IPiGlobal.sol";
 import "../interfaces/IPool.sol";
+import "../libraries/Errors.sol";
 
 contract Oracle is PiAdmin {
     mapping(address => IChainLink) public priceFeeds;
@@ -35,10 +36,6 @@ contract Oracle is PiAdmin {
     error InvalidFeed(address);
     error MaxPriceTimeToleration();
     error OldPrice();
-    error SameValue();
-    error ZeroAddress();
-    error GreaterThan(string);
-    error LessThan(string);
     error NothingToLiquidate();
 
     constructor(IPiGlobal _global) {
@@ -57,7 +54,7 @@ contract Oracle is PiAdmin {
     // Set max price offset in time permited
     function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin {
         if (_newPriceTimeToleration > MAX_PRICE_TIME_TOLERATION) revert MaxPriceTimeToleration();
-        if (priceTimeToleration == _newPriceTimeToleration) revert SameValue();
+        if (priceTimeToleration == _newPriceTimeToleration) revert Errors.SameValue();
 
         emit NewPriceTimeToleration(priceTimeToleration, _newPriceTimeToleration);
 
@@ -67,11 +64,11 @@ contract Oracle is PiAdmin {
     // Set the liquidation factor (the minimum HF to be liquidated)
     // Set the expected HF after for liquidation to only liquidate a little more than "critical" HF
     function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin {
-        if (_newLT > MAX_THRESHOLD) revert GreaterThan("LT > MAX_THRESHOLD");
-        if (_newLT < MIN_THRESHOLD) revert LessThan("LT < MIN_THRESHOLD");
-        if (_newLEHF <= _newLT) revert LessThan("LExpectedHF < LT");
-        if (_newLEHF > MAX_THRESHOLD) revert GreaterThan("LExpectedHF > MAX_THRESHOLD");
-        if (_newLT == liquidationThreshold && _newLEHF == liquidationExpectedHF) revert SameValue();
+        if (_newLT > MAX_THRESHOLD) revert Errors.GreaterThan("LT > MAX_THRESHOLD");
+        if (_newLT < MIN_THRESHOLD) revert Errors.LessThan("LT < MIN_THRESHOLD");
+        if (_newLEHF <= _newLT) revert Errors.LessThan("LExpectedHF < LT");
+        if (_newLEHF > MAX_THRESHOLD) revert Errors.GreaterThan("LExpectedHF > MAX_THRESHOLD");
+        if (_newLT == liquidationThreshold && _newLEHF == liquidationExpectedHF) revert Errors.SameValue();
 
         emit NewLiquidationThreshold(liquidationThreshold, _newLT, liquidationExpectedHF, _newLEHF);
 
@@ -81,7 +78,7 @@ contract Oracle is PiAdmin {
 
     // Set a liquidation bonus percentage for liquidator
     function setLiquidationBonus(uint _newLB) external onlyAdmin {
-        if (_newLB > MAX_LIQUIDATION_BONUS) revert GreaterThan("MAX_LIQUIDATION_BONUS");
+        if (_newLB > MAX_LIQUIDATION_BONUS) revert Errors.GreaterThan("MAX_LIQUIDATION_BONUS");
 
         emit NewLiquidationBonus(liquidationBonus, _newLB);
 
@@ -90,8 +87,8 @@ contract Oracle is PiAdmin {
 
     // Add token oracle price
     function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin {
-        if (_token == address(0)) revert ZeroAddress();
-        if (priceFeeds[_token] == _feed) revert SameValue();
+        if (_token == address(0)) revert Errors.ZeroAddress();
+        if (priceFeeds[_token] == _feed) revert Errors.SameValue();
 
         (uint80 round, int price,,,) = _feed.latestRoundData();
         if (round <= 0 || price <= 0 || _feed.decimals() <= 6) revert InvalidFeed(_token);
