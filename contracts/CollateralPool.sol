@@ -187,13 +187,9 @@ contract CollateralPool is PiAdmin, Pausable {
 
     // In case somebody send tokens to this contract directly
     // we can recover them from the treasury
-    function fun(IERC20Metadata _asset) external nonReentrant onlyAdmin {
+    function rescueFounds(IERC20Metadata _asset) external nonReentrant onlyAdmin {
         address _treasury = piGlobal.treasury();
-        if (_treasury == address(0)) revert Errors.ZeroAddress();
 
-        if (_asset == asset)
-            _deposit(asset.balanceOf(address(this)), _treasury);
-        else
-            _asset.safeTransfer(_treasury, _asset.balanceOf(address(this)));
+        _asset.safeTransfer(_treasury, _asset.balanceOf(address(this)));
     }
 }

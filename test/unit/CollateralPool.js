@@ -15,11 +15,11 @@ describe('Collateral Pool', async function () {
 
     await piGlobal.setOracle(oracle.address)
 
-    const token  = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
-    const Pool   = await ethers.getContractFactory('CollateralPool')
+    const token      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+    const Pool       = await ethers.getContractFactory('CollateralPool')
     const Controller = await ethers.getContractFactory('Controller')
-    const pool   = await Pool.deploy(piGlobal.address, token.address)
-    const cToken = await Controller.deploy(pool.address)
+    const pool       = await Pool.deploy(piGlobal.address, token.address)
+    const cToken     = await Controller.deploy(pool.address)
 
     await pool.setController(cToken.address)
 
@@ -237,7 +237,7 @@ describe('Collateral Pool', async function () {
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
     })
 
-    it("Should not work if controller can't return any tokens", async function () {
+    it('Should not work if controller can\'t return any tokens', async function () {
       const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)
@@ -258,6 +258,52 @@ describe('Collateral Pool', async function () {
       await expect(pool.connect(bob)['withdraw(uint256)'](1)).to.be.revertedWithCustomError(pool, 'ZeroAmount')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
+    })
+  })
+
+  describe('Rescue founds', async function () {
+    it('Should work', async function () {
+      const { bob, piGlobal, pool, token } = await loadFixture(deploy)
+      const treasury                       = await piGlobal.treasury()
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).transfer(pool.address, 1000)
+
+      expect(await token.balanceOf(pool.address)).to.be.equal(1000)
+      expect(await token.balanceOf(treasury)).to.be.equal(0)
+      expect(await pool.balanceOf(bob.address)).to.be.equal(0)
+
+      await pool.rescueFounds(token.address)
+
+      expect(await token.balanceOf(pool.address)).to.be.equal(0)
+      expect(await token.balanceOf(treasury)).to.be.equal(1000)
+    })
+
+    it('Should not work if not admin', async function () {
+      const { bob, pool, token } = await loadFixture(deploy)
+
+      await expect(
+        pool.connect(bob).rescueFounds(token.address)
+      ).to.be.revertedWithCustomError(pool, 'NotAdmin')
+    })
+
+    it('Should work for all erc20 tokens', async function () {
+      const { bob, piGlobal, pool } = await loadFixture(deploy)
+      const treasury                = await piGlobal.treasury()
+      const token                   = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t', 't')
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).transfer(pool.address, 1000)
+
+      expect(await pool.asset()).not.to.be.equal(token.address)
+      expect(await token.balanceOf(pool.address)).to.be.equal(1000)
+      expect(await token.balanceOf(treasury)).to.be.equal(0)
+      expect(await pool.balanceOf(bob.address)).to.be.equal(0)
+
+      await pool.rescueFounds(token.address)
+
+      expect(await token.balanceOf(pool.address)).to.be.equal(0)
+      expect(await token.balanceOf(treasury)).to.be.equal(1000)
     })
   })
 })
