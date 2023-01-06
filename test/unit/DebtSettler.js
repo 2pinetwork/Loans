@@ -1,7 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { deployOracle, ZERO_ADDRESS } = require('./helpers')
+const { deployOracle, mine, ZERO_ADDRESS } = require('./helpers')
 
 const setupCollateral = async function (fixtures) {
   const {
@@ -94,11 +94,80 @@ describe('Debt settler', async function () {
       const { lPool, DebtSettler } = await loadFixture(deploy)
       const debtSettler            = await DebtSettler.deploy(lPool.address)
 
-      expect(debtSettler.address).to.not.be.equal(ZERO_ADDRESS)
+      await expect(debtSettler.address).to.not.be.equal(ZERO_ADDRESS)
+    })
+
+    it('Should fail when zero address', async function () {
+      const { DebtSettler } = await loadFixture(deploy)
+
+      await expect(DebtSettler.deploy(ZERO_ADDRESS)).to.be.revertedWithCustomError(
+        DebtSettler,
+        'ZeroAddress'
+      )
+    })
+
+    it('Should fail when liquidity pool is expired', async function () {
+      const { piGlobal, token, DebtSettler, LPool } = await loadFixture(deploy)
+
+      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
+      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
+
+      mine(100)
+
+      await expect(DebtSettler.deploy(lPool.address)).to.be.revertedWithCustomError(
+        DebtSettler,
+        'InvalidPool'
+      )
+    })
+
+    it('Should fail when address is not a liquidity pool', async function () {
+      const { dToken, DebtSettler } = await loadFixture(deploy)
+
+      await expect(DebtSettler.deploy(dToken.address)).to.be.revertedWithoutReason()
+    })
+  })
+
+  describe('Validations', async function () {
+    it('Should fail when not called by the liquidity pool', async function () {
+      const { alice, bob, debtSettler } = await loadFixture(deploy)
+
+      await expect(debtSettler.build(1e18 + '')).to.be.revertedWithCustomError(
+        debtSettler,
+        'UnknownSender'
+      )
+    })
+
+    it('Should fail when addBorrower is called from a non liquidity pool', async function () {
+      const { alice, debtSettler } = await loadFixture(deploy)
+
+      await expect(debtSettler.addBorrower(alice.address)).to.be.revertedWithCustomError(
+        debtSettler,
+        'UnknownSender'
+      )
+    })
+
+    it('Should fail when removeBorrower is called from a non liquidity pool', async function () {
+      const { alice, debtSettler } = await loadFixture(deploy)
+
+      await expect(debtSettler.removeBorrower(alice.address)).to.be.revertedWithCustomError(
+        debtSettler,
+        'UnknownSender'
+      )
     })
   })
 
   describe('Build and pay', async function () {
+    it('Should work even when liquidity pool is fresh', async function () {
+      const dueDate = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+
+      const { piGlobal, token, DebtSettler, LPool } = await loadFixture(deploy)
+
+      const lPool       = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const debtSettler = await DebtSettler.deploy(lPool.address)
+
+      await expect(debtSettler.build('100')).to.be.reverted
+    })
+
     it('Should work for debt settling when amount >= debt', async function () {
       const fixtures = await loadFixture(deploy)
 
@@ -153,11 +222,22 @@ describe('Debt settler', async function () {
       await debtSettler.connect(treasury).pay()
 
       // Since debt is calculated before payment, next block we have _some_
-      const oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
+      let oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(oneBlockInterestAmount)
       // Alice has double amount deposited, hence twice the interest of bob
       expect(await lPool['debt(address)'](alice.address)).to.be.equal(oneBlockInterestAmount.mul(2))
+
+
+      // This should have no effect since we already paid the debt
+      // and borrowers have been set to zero balance
+      await debtSettler.connect(treasury).pay()
+
+      // This should be increased by one block since previous check
+      // And a little bit more =)
+      expect(await lPool['debt(address)'](bob.address)).to.be.greaterThan(oneBlockInterestAmount)
+      // Alice has double amount deposited, hence twice the interest of bob
+      expect(await lPool['debt(address)'](alice.address)).to.be.greaterThan(oneBlockInterestAmount.mul(2))
 
       // Now we check that clean method works
       expect(await debtSettler.recordsLength()).to.be.equal(2)
@@ -253,6 +333,18 @@ describe('Debt settler', async function () {
 
       expect(await token.balanceOf(debtSettler.address)).to.be.equal(0)
       expect(await token.balanceOf(treasury.address)).to.be.equal(20e18 + '')
+    })
+
+    it('Should recover no founds when none', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { debtSettler, token, treasury } = fixtures
+
+      expect(await token.balanceOf(debtSettler.address)).to.be.equal(0)
+
+      await debtSettler.rescueFounds()
+
+      expect(await token.balanceOf(treasury.address)).to.be.equal(0)
     })
   })
 })
