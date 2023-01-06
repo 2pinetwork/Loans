@@ -3,7 +3,6 @@ pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import "hardhat/console.sol";
 import "./PiAdmin.sol";
 import "../interfaces/IChainLink.sol";
 import "../interfaces/IPiGlobal.sol";
@@ -79,6 +78,7 @@ contract Oracle is PiAdmin {
     // Set a liquidation bonus percentage for liquidator
     function setLiquidationBonus(uint _newLB) external onlyAdmin nonReentrant {
         if (_newLB > MAX_LIQUIDATION_BONUS) revert Errors.GreaterThan("MAX_LIQUIDATION_BONUS");
+        if (_newLB == liquidationBonus) revert Errors.SameValue();
 
         emit NewLiquidationBonus(liquidationBonus, _newLB);
 
