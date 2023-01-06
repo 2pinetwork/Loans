@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -264,10 +263,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     function _checkDepositLimit(address _user, uint _amount) internal view {
         // 0 depositLimit means no-limit
         if (depositLimit > 0 && (balance() + _amount) > depositLimit)
-            revert Errors.GreaterThan('depositLimit');
+            revert Errors.GreaterThan("depositLimit");
 
         if (userDepositLimit > 0 && _amount > availableUserDeposit(_user))
-            revert Errors.GreaterThan('userDepositLimit');
+            revert Errors.GreaterThan("userDepositLimit");
     }
 
     function pricePerShare() public view returns (uint) {
