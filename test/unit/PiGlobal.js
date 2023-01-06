@@ -26,6 +26,78 @@ describe('PiGlobal', async function () {
     })
   })
 
+  describe('Oracle', async function () {
+    it('Should not be able to set oracle if not admin', async function () {
+      const { bob, piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.connect(bob).setOracle(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'NotAdmin')
+    })
+
+    it('Should revert if not oracle', async function () {
+      const { piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(piGlobal.setOracle(randomAddr)).to.be.reverted
+    })
+
+    it('Should be reverted if oracle belongs to another piGlobal contract', async function () {
+      const { PiGlobal, piGlobal } = await loadFixture(deploy)
+
+      const piGlobal2 = await PiGlobal.deploy()
+      const Oracle    = await ethers.getContractFactory('Oracle')
+      const oracle    = await Oracle.deploy(piGlobal2.address)
+
+      await expect(
+        piGlobal.setOracle(oracle.address)
+      ).to.be.revertedWithCustomError(piGlobal, 'WrongOracle')
+    })
+
+    it('Should revert if oracle is zero address', async function () {
+      const { piGlobal } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.setOracle(ZERO_ADDRESS)
+      ).to.be.revertedWithCustomError(piGlobal, 'ZeroAddress')
+    })
+  })
+
+  describe('Treasury', async function () {
+    it('Should be able to set treasury', async function () {
+      const { owner, piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(await piGlobal.setTreasury(randomAddr)).to.emit(
+        piGlobal, 'NewTreasury'
+      ).withArgs(owner.address, randomAddr)
+
+      await expect(await piGlobal.treasury()).to.be.equal(randomAddr)
+    })
+
+    it('Should not be able to set treasury if not owner', async function () {
+      const { bob, piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.connect(bob).setTreasury(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'NotAdmin')
+    })
+
+    it('Should not be able to set treasury to zero address', async function () {
+      const { piGlobal } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.setTreasury(ZERO_ADDRESS)
+      ).to.be.revertedWithCustomError(piGlobal, 'ZeroAddress')
+    })
+
+    it('Should not be able to set treasury to current treasury', async function () {
+      const { piGlobal } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.setTreasury(await piGlobal.treasury())
+      ).to.be.revertedWithCustomError(piGlobal, 'SameValue')
+    })
+  })
+
   describe('Collateral Pools', async function () {
     it('Should not add pool for non-admin', async function () {
       const { bob, piGlobal } = await loadFixture(deploy)
@@ -85,6 +157,30 @@ describe('PiGlobal', async function () {
       ).withArgs(randomAddr)
 
       expect(await piGlobal.collateralPools()).to.be.an('array').that.is.empty
+    })
+
+    it('Should not remove when not admin', async function () {
+      const { bob, piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.connect(bob).removeCollateralPool(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'NotAdmin')
+    })
+
+    it('Should not remove zero address pool', async function () {
+      const { piGlobal } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.removeCollateralPool(ZERO_ADDRESS)
+      ).to.be.revertedWithCustomError(piGlobal, 'ZeroAddress')
+    })
+
+    it('Should not remove non-existent pool', async function () {
+      const { piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.removeCollateralPool(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'UnknownPool')
     })
   })
 
@@ -147,6 +243,30 @@ describe('PiGlobal', async function () {
       ).withArgs(randomAddr)
 
       expect(await piGlobal.liquidityPools()).to.be.an('array').that.is.empty
+    })
+
+    it('Should not remove when not admin', async function () {
+      const { bob, piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.connect(bob).removeLiquidityPool(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'NotAdmin')
+    })
+
+    it('Should not remove zero address pool', async function () {
+      const { piGlobal } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.removeLiquidityPool(ZERO_ADDRESS)
+      ).to.be.revertedWithCustomError(piGlobal, 'ZeroAddress')
+    })
+
+    it('Should not remove non-existent pool', async function () {
+      const { piGlobal, randomAddr } = await loadFixture(deploy)
+
+      await expect(
+        piGlobal.removeLiquidityPool(randomAddr)
+      ).to.be.revertedWithCustomError(piGlobal, 'UnknownPool')
     })
   })
 })

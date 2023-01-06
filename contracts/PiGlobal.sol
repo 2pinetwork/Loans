@@ -38,7 +38,7 @@ contract PiGlobal is PiAdmin {
         oracle = _oracle;
     }
 
-    // To be used by default
+    // To be used by default on every new contract
     function setTreasury(address _treasury) external onlyAdmin nonReentrant {
         if (_treasury == address(0)) revert Errors.ZeroAddress();
         if (_treasury == treasury) revert Errors.SameValue();
