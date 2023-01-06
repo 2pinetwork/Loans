@@ -129,7 +129,7 @@ describe('Debt settler', async function () {
 
   describe('Validations', async function () {
     it('Should fail when not called by the liquidity pool', async function () {
-      const { alice, bob, debtSettler } = await loadFixture(deploy)
+      const { debtSettler } = await loadFixture(deploy)
 
       await expect(debtSettler.build(1e18 + '')).to.be.revertedWithCustomError(
         debtSettler,
