@@ -100,13 +100,14 @@ contract LiquidityPool is Pausable, PiAdmin {
     event Borrow(address _sender, uint _amount);
     event Repay(address _sender, uint _amount);
     event NewOriginatorFee(uint _oldFee, uint _newFee);
-    event NewInterestInterestRate(uint _oldInterestRate, uint _newInterestRate);
+    event NewInterestRate(uint _oldInterestRate, uint _newInterestRate);
     event NewOracle(address _oldOracle, address _newOracle);
     event NewPiFee(uint _oldFee, uint _newFee);
     event NewTreasury(address _oldTreasury, address _newTreasury);
     event CollectedFee(uint _fee);
     event CollectedOriginatorFee(uint _fee);
     event SafeBoxChanged(address _safeBox, bool _newState);
+    event NewDebtSettler(address _old, address _new);
 
     /*********** COMMON FUNCTIONS ***********/
     function decimals() public view returns (uint8) {
@@ -117,7 +118,7 @@ contract LiquidityPool is Pausable, PiAdmin {
         if (_newInterestRate > MAX_RATE) revert Errors.GreaterThan("MAX_RATE");
         if (dToken.totalSupply() > 0) revert AlreadyInitialized();
 
-        emit NewInterestInterestRate(interestRate, _newInterestRate);
+        emit NewInterestRate(interestRate, _newInterestRate);
 
         interestRate = _newInterestRate;
     }
@@ -154,6 +155,8 @@ contract LiquidityPool is Pausable, PiAdmin {
         if (address(_debtSettler) == address(0)) revert Errors.ZeroAddress();
         if (address(_debtSettler) == address(debtSettler)) revert Errors.SameValue();
 
+        emit NewDebtSettler(address(debtSettler), address(_debtSettler));
+
         debtSettler = _debtSettler;
     }
 
@@ -177,7 +180,6 @@ contract LiquidityPool is Pausable, PiAdmin {
 
         emit SafeBoxChanged(address(safeBox), safeBoxEnabled);
     }
-
 
     function expired() public view returns (bool) {
         return block.timestamp > dueDate;
@@ -239,9 +241,16 @@ contract LiquidityPool is Pausable, PiAdmin {
 
         uint _amount = (_balanceForSharesCalc() * _shares) / lToken.totalSupply();
 
-        if (_amount > balance()) revert InsufficientLiquidity();
+
+        uint _assetBal = balance();
+        uint _safeBal = _safeBalance();
+
+        if (_amount > (_assetBal + _safeBal)) revert InsufficientLiquidity();
 
         lToken.burn(msg.sender, _shares);
+
+        // Ensure if we don't have the entire amount take it from safe
+        if (_amount > _assetBal) safeBox.transfer(_amount - _assetBal);
 
         asset.safeTransfer(_to, _amount);
 
@@ -475,7 +484,7 @@ contract LiquidityPool is Pausable, PiAdmin {
 
     // Balance with primary debt to calculate shares
     function _balanceForSharesCalc() internal view returns (uint) {
-        return asset.balanceOf(address(this)) + dToken.totalSupply() + _safeBalance();
+        return balance() + dToken.totalSupply() + _safeBalance();
     }
 
     function _safeBalance() internal view returns (uint) {

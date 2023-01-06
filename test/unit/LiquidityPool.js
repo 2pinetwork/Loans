@@ -1,7 +1,8 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs")
 
-const { deployOracle, mine, ZERO_ADDRESS } = require('./helpers')
+const { deployOracle, impersonateContract, mine, ZERO_ADDRESS } = require('./helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee
@@ -75,7 +76,6 @@ describe('Liquidity Pool', async function () {
     await Promise.all([
       cPool.setController(cToken.address),
       lPool.setTreasury(treasury.address),
-      lPool.setDebtSettler(debtSettler.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
     ])
@@ -119,7 +119,165 @@ describe('Liquidity Pool', async function () {
       expect(await lToken.symbol()).to.be.equal('2pi-L-t')
       expect(await lToken.decimals()).to.be.equal(18)
     })
+
+    it('Should not work', async function () {
+      const { piGlobal, token, LPool } = await loadFixture(deploy)
+
+      const PiGlobal = await ethers.getContractFactory('PiGlobal')
+      const ts       = (await ethers.provider.getBlock()).timestamp
+      const dueDate  = ts + (365 * 24 * 60 * 60)
+
+      await expect(
+        LPool.deploy(piGlobal.address, token.address, ts - 1)
+      ).to.be.revertedWithCustomError(LPool, 'DueDateInThePast')
+
+      await expect(
+        LPool.deploy(ZERO_ADDRESS, token.address, dueDate)
+      ).to.be.revertedWithCustomError(LPool, 'ZeroAddress')
+
+      const piGlobal2 = await PiGlobal.deploy()
+
+      // ZeroAddress for oracle
+      await expect(
+        LPool.deploy(piGlobal2.address, token.address, dueDate)
+      ).to.be.revertedWithCustomError(LPool, 'ZeroAddress')
+    })
   })
+
+  describe('setOriginatorFee', async function () {
+    it('Should not work', async function () {
+      const { alice, dToken, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).setOriginatorFee(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+
+      await expect(
+        lPool.setOriginatorFee(1.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'GreaterThan', 'MAX_RATE')
+
+      const lPoolS = await impersonateContract(lPool.address)
+
+      await dToken.connect(lPoolS).mint(alice.address, 1)
+
+      await expect(
+        lPool.setOriginatorFee(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'AlreadyInitialized')
+    })
+  })
+
+  describe('setPiFee', async function () {
+    it('Should not work', async function () {
+      const { alice, dToken, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).setPiFee(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+
+      await expect(
+        lPool.setPiFee(1.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'GreaterThan', 'MAX_RATE')
+
+      const lPoolS = await impersonateContract(lPool.address)
+
+      await dToken.connect(lPoolS).mint(alice.address, 1)
+
+      await expect(
+        lPool.setPiFee(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'AlreadyInitialized')
+    })
+  })
+
+  describe('setInterestRate', async function () {
+    it('Should work', async function () {
+      const { lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.setInterestRate(0.02e18 + '')
+      ).to.emit(lPool, 'NewInterestRate').withArgs(
+        0.01e18 + '', 0.02e18 + ''
+      )
+    })
+
+    it('Should not work', async function () {
+      const { alice, dToken, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).setInterestRate(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+
+      await expect(
+        lPool.setInterestRate(1.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'GreaterThan', 'MAX_RATE')
+
+      const lPoolS = await impersonateContract(lPool.address)
+
+      await dToken.connect(lPoolS).mint(alice.address, 1)
+
+      await expect(
+        lPool.setInterestRate(0.01e18 + '')
+      ).to.be.revertedWithCustomError(lPool, 'AlreadyInitialized')
+    })
+  })
+
+
+  describe('Debt', async function () {
+    it('Should work for timestamp = 0', async function () {
+      const { bob, dToken, lPool } = await loadFixture(deploy)
+
+      const lPoolS = await impersonateContract(lPool.address)
+
+      // trigger the _timestamp[bob] 0
+      await dToken.connect(lPoolS).mint(bob.address, 1)
+
+      expect(await lPool.connect(bob)['debt()']()).to.be.equal(1)
+    })
+  })
+
+  describe('setTreasury', async function () {
+    it('Should not work', async function () {
+      const { alice, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).setTreasury(alice.address)
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+
+      await expect(
+        lPool.setTreasury(ZERO_ADDRESS)
+      ).to.be.revertedWithCustomError(lPool, 'ZeroAddress')
+
+      await expect(
+        lPool.setTreasury(await lPool.treasury())
+      ).to.be.revertedWithCustomError(lPool, 'SameValue')
+    })
+  })
+
+  describe('setDebtSettler', async function () {
+    it('Should not work', async function () {
+      const { alice, debtSettler, lPool } = await loadFixture(deploy)
+
+      await expect(lPool.setDebtSettler(ZERO_ADDRESS)).to.be.revertedWithCustomError(lPool, 'ZeroAddress')
+
+      await expect(lPool.connect(alice).setDebtSettler(alice.address)).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+
+      await expect(lPool.setDebtSettler(debtSettler.address)).to.emit(
+        lPool, 'NewDebtSettler'
+      )
+
+      await expect(lPool.setDebtSettler(debtSettler.address)).to.be.revertedWithCustomError(lPool, 'SameValue')
+    })
+  })
+
+  describe('setSafeBoxEnabled', async function () {
+    it('Should not work', async function () {
+      const { lPool } = await loadFixture(deploy)
+
+      await expect(lPool.setSafeBoxEnabled(true)).to.emit(lPool, 'SafeBoxChanged')
+
+      await expect(lPool.setSafeBoxEnabled(true)).to.revertedWithCustomError(lPool, 'SameValue')
+    })
+  })
+
 
   describe('Deposit', async function () {
     it('Should work', async function () {
@@ -141,6 +299,29 @@ describe('Liquidity Pool', async function () {
       expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
       expect(await lPool.balance()).to.be.equal(2008)
     })
+
+    it('Should work with safeBox', async function () {
+      const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
+
+      await expect(lPool.setSafeBoxEnabled(true)).to.emit(lPool, 'SafeBoxChanged')
+
+      await token.mint(alice.address, 1000)
+      await token.mint(bob.address, 1000)
+      await token.connect(alice).approve(lPool.address, 1000)
+      await token.connect(bob).approve(lPool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+
+      await token.mint(lPool.address, 8) // just to change the shares proportion
+
+      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
+      expect(await lPool.balance()).to.be.equal(2008)
+    })
+
 
     it('Should work on behalf of', async function () {
       const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
@@ -171,7 +352,7 @@ describe('Liquidity Pool', async function () {
 
   describe('Withdraw', async function () {
     it('Should work', async function () {
-      const { bob, lPool, lToken, token } = await loadFixture(deploy)
+      const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
 
       await token.mint(bob.address, 1000)
       await token.connect(bob).approve(lPool.address, 1000)
@@ -186,10 +367,17 @@ describe('Liquidity Pool', async function () {
       expect(await lPool.connect(bob)['withdraw(uint256)'](10)).to.emit(lPool, 'Withdraw')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(10)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      expect(await lPool.connect(bob)['withdraw(uint256,address)'](10, alice.address)).to.emit(lPool, 'Withdraw')
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(980)
+      expect(await token.balanceOf(bob.address)).to.be.equal(10)
+      expect(await token.balanceOf(alice.address)).to.be.equal(10)
+
 
       expect(await lPool.connect(bob).withdrawAll()).to.emit(lPool, 'Withdraw')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
-      expect(await token.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(990)
     })
 
     it('Should work when borrowed', async function () {
@@ -336,6 +524,8 @@ describe('Liquidity Pool', async function () {
       expect(await iToken.balanceOf(bob.address)).to.be.equal(0)
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
+      expect(await lPool.connect(bob)['debt()']()).to.be.equal(depositAmount)
+      expect(await lPool.totalDebt()).to.be.equal(depositAmount)
       expect(await token.balanceOf(lPool.address)).to.be.equal(0.1e18 + '')
 
       // 100 blocks per 1 second => 100 seconds of interest
@@ -477,6 +667,12 @@ describe('Liquidity Pool', async function () {
       await lPool.connect(bob).borrow(100)
 
       await expect(lPool.connect(bob).repay(0)).to.be.revertedWithCustomError(lPool, 'ZeroAmount')
+    })
+
+    it('Should not work for zero debt', async function () {
+      const { bob, lPool } = await loadFixture(deploy)
+
+      await expect(lPool.connect(bob).repay(1)).to.be.revertedWithCustomError(lPool, 'NoDebt')
     })
 
     it('Should work for expired pool', async function () {
@@ -1151,6 +1347,7 @@ describe('Liquidity Pool', async function () {
     it('Should work repay != not-minted-interest', async function () {
       const fixtures = await loadFixture(deploy)
       const {
+        alice,
         bob,
         dToken,
         iToken,
@@ -1163,10 +1360,16 @@ describe('Liquidity Pool', async function () {
 
       // Add liquidity & Repayment
       await Promise.all([
-        token.mint(lPool.address, 10e18 + ''),
+        token.mint(alice.address, 10e18 + ''),
         token.mint(bob.address, 10e18 + ''),
         token.connect(bob).approve(lPool.address, 100e18 + ''),
+        token.connect(alice).approve(lPool.address, 10e18 + ''),
       ])
+
+      await lPool.connect(alice)['deposit(uint256)'](10e18 + '')
+
+
+
 
       await expect(lPool.setSafeBoxEnabled(true)).to.emit(lPool, 'SafeBoxChanged')
 
@@ -1176,7 +1379,9 @@ describe('Liquidity Pool', async function () {
 
       const ts = (await hre.ethers.provider.getBlock()).timestamp
 
+
       await lPool.connect(bob).borrow(depositAmount)
+
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(
         depositAmount
@@ -1197,7 +1402,7 @@ describe('Liquidity Pool', async function () {
       let   repayment    = interest.div(2)
       const interestRest = interest.sub(repayment)
       let   piFee        = await getPiFeeFor(lPool, repayment)
-      const lPoolBal     = await token.balanceOf(lPool.address)
+      let   lPoolBal     = await token.balanceOf(lPool.address)
 
       // Repay < _diff
       await expect(lPool.connect(bob).repay(repayment)).to.emit(
@@ -1220,7 +1425,25 @@ describe('Liquidity Pool', async function () {
 
       // lPool shouldn't change
       expect(await token.balanceOf(lPool.address)).to.be.equal(lPoolBal)
-      expect(await token.balanceOf(safeBox.address)).to.be.equal(repayment.sub(piFee))
+      expect(await token.balanceOf(safeBox.address)).to.be.equal(repayment.sub(piFee)).to.be.above(0)
+
+      const safeBoxBal = await token.balanceOf(safeBox.address)
+
+      // lPoolBal should be 0.1e18 after borrow 9.9e18
+      // if we add at least 1 token, it should take it from safeBox
+      await expect(lPool.connect(alice)['withdraw(uint256)'](lPoolBal.add(1))).to.emit(
+        lPool, 'Withdraw'
+      ).to.emit(
+        token, 'Transfer'
+      ).withArgs(safeBox.address, lPool.address, anyValue)
+
+      const diffFromSafe = safeBoxBal.sub(await token.balanceOf(safeBox.address))
+
+      // After withdraw more than lPool has, it only has safeBox balance
+      expect(await token.balanceOf(lPool.address)).to.be.equal(0)
+      expect(await token.balanceOf(safeBox.address)).to.be.equal(
+        repayment.sub(piFee).sub(diffFromSafe)
+      )
 
       // Disable safeBox
       await expect(lPool.setSafeBoxEnabled(false)).to.emit(lPool, 'SafeBoxChanged').withArgs(
@@ -1228,7 +1451,7 @@ describe('Liquidity Pool', async function () {
       ).to.emit(
         token, 'Transfer' // safe balance
       ).withArgs(
-        safeBox.address, lPool.address, repayment.sub(piFee)
+        safeBox.address, lPool.address, repayment.sub(piFee).sub(diffFromSafe)
       )
 
       // Just to cover the case enable & disable again
@@ -1244,14 +1467,17 @@ describe('Liquidity Pool', async function () {
         token, 'Transfer' // previous safe balance was 0
       )
 
-      expect(await token.balanceOf(lPool.address)).to.be.equal(lPoolBal.add(repayment.sub(piFee)))
+      // lPool only has repayment amount after LP.withdraw
+      expect(await token.balanceOf(lPool.address)).to.be.equal(repayment.sub(piFee).sub(diffFromSafe))
       expect(await token.balanceOf(safeBox.address)).to.be.equal(0)
+
+      lPoolBal = await token.balanceOf(lPool.address)
 
       // Just check the repay keeps the amount
       await expect(lPool.connect(bob).repay(repayment)).to.emit(lPool, 'Repay')
 
       expect(await token.balanceOf(lPool.address)).to.be.equal(
-        lPoolBal.add(repayment.sub(piFee).mul(2))
+        lPoolBal.add(repayment.sub(piFee))
       )
       expect(await token.balanceOf(safeBox.address)).to.be.equal(0) // still without use
     })

@@ -89,6 +89,18 @@ describe('Liquidation', async function () {
     await network.provider.send("evm_setAutomine", [true]);
   })
 
+  it('should not work for nonPool', async function () {
+    const { alice, bob, lPool } = await loadFixture(deploy)
+
+    await expect(
+      lPool.liquidate(alice.address, bob.address, 1)
+    ).to.be.revertedWithCustomError(lPool, 'UnknownSender')
+
+    await expect(
+      lPool.connect(bob).liquidate(alice.address, bob.address, 1)
+    ).to.be.revertedWithCustomError(lPool, 'UnknownSender')
+  })
+
   it('should work for due pool with same token', async function () {
     const fixtures = await loadFixture(deploy)
 
