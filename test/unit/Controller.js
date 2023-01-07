@@ -1,6 +1,7 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
-const { deployOracle, ZERO_ADDRESS } = require('./helpers')
+
+const { deployOracle, impersonateContract, ZERO_ADDRESS } = require('./helpers')
 
 const setupCollateral = async function (fixtures) {
   const {
@@ -217,7 +218,7 @@ describe('Controller', async function () {
     })
   })
 
-  describe('Deposit', async function () {
+  describe('Deposit limit', async function () {
     it('setDepositLimit should work', async function () {
       const fixtures = await loadFixture(deploy)
 
@@ -228,6 +229,16 @@ describe('Controller', async function () {
       await expect(cToken.setDepositLimit(1)).to.emit(cToken, 'NewDepositLimit').withArgs(0, 1)
 
       expect(await cToken.availableDeposit()).to.be.equal(1)
+    })
+
+    it('setDepositLimit should not work if not owner', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(
+        cToken.connect(bob).setDepositLimit(1)
+      ).to.be.revertedWith('Ownable: caller is not the owner')
     })
 
     it('setDepositLimit should not work', async function () {
@@ -250,6 +261,16 @@ describe('Controller', async function () {
       expect(await cToken.availableUserDeposit(bob.address)).to.be.equal(1)
     })
 
+    it('setUserDepositLimit should not work if not owner', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(
+        cToken.connect(bob).setUserDepositLimit(1)
+      ).to.be.revertedWith('Ownable: caller is not the owner')
+    })
+
     it('setUserDepositLimit should not work', async function () {
       const fixtures = await loadFixture(deploy)
 
@@ -260,13 +281,22 @@ describe('Controller', async function () {
   })
 
   describe('Strategy', async function () {
-
     it('setStrategy should work', async function () {
       const { cToken, Strat } = await loadFixture(deploy)
 
       const strategy = await Strat.deploy(cToken.asset())
 
       await expect(cToken.setStrategy(strategy.address)).to.emit(cToken, 'StrategyChanged').withArgs(ZERO_ADDRESS, strategy.address)
+    })
+
+    it('setStrategy should not work if not owner', async function () {
+      const { cToken, Strat, bob } = await loadFixture(deploy)
+
+      const strategy = await Strat.deploy(cToken.asset())
+
+      await expect(
+        cToken.connect(bob).setStrategy(strategy.address)
+      ).to.be.revertedWith('Ownable: caller is not the owner')
     })
 
     it('setStrategy should not work', async function () {
@@ -358,6 +388,82 @@ describe('Controller', async function () {
       await strategy.breakRetire(true)
 
       await expect(cPool.connect(bob)['withdraw(uint256)'](1)).to.be.revertedWithCustomError(cToken, 'CouldNotWithdrawFromStrategy')
+    })
+
+    it('deposit & withdraw should revert when called by non pool', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(
+        cToken.connect(bob).withdraw(bob.address, 1)
+      ).to.be.revertedWithCustomError(cToken, 'NotPool')
+
+      await expect(
+        cToken.connect(bob).deposit(bob.address, 1)
+      ).to.be.revertedWithCustomError(cToken, 'NotPool')
+    })
+
+    it('deposit should revert when zero amount', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken, cPool } = fixtures
+
+      const impersonatedPool = await impersonateContract(cPool.address)
+
+      await expect(
+        cToken.connect(impersonatedPool).deposit(bob.address, 0)
+      ).to.be.revertedWithCustomError(cToken, 'ZeroAmount')
+    })
+
+    it('withdraw should revert when zero amount', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken, cPool } = fixtures
+
+      const impersonatedPool = await impersonateContract(cPool.address)
+
+      await expect(
+        cToken.connect(impersonatedPool).withdraw(bob.address, 0)
+      ).to.be.revertedWithCustomError(cToken, 'ZeroShares')
+    })
+
+    it('withdrawForLiquidation should revert when zero amount', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken, cPool } = fixtures
+
+      const impersonatedPool = await impersonateContract(cPool.address)
+
+      await expect(
+        cToken.connect(impersonatedPool).withdrawForLiquidation(bob.address, 0)
+      ).to.be.revertedWithCustomError(cToken, 'ZeroAmount')
+    })
+  })
+
+  describe('User deposits', function () {
+    it('available user deposit should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await setupCollateral(fixtures)
+      await cToken.setUserDepositLimit(10e18 + '')
+
+      // Since we deposit 9.9e18, we should be able to deposit 0.1e18 more
+      await expect(await cToken.availableUserDeposit(bob.address)).to.be.equal(1e17 + '')
+    })
+
+    it('available user deposit should return 0 when limit is exceeded', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await setupCollateral(fixtures)
+      await cToken.setUserDepositLimit(1e18 + '')
+
+      // Since we deposit 9.9e18, we should have 0 available
+      await expect(await cToken.availableUserDeposit(bob.address)).to.be.equal(0)
     })
   })
 })
