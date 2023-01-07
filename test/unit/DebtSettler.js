@@ -1,7 +1,12 @@
 const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { deployOracle, mine, ZERO_ADDRESS } = require('./helpers')
+const {
+  deployOracle,
+  impersonateContract,
+  mine,
+  ZERO_ADDRESS
+} = require('./helpers')
 
 const setupCollateral = async function (fixtures) {
   const {
@@ -162,10 +167,11 @@ describe('Debt settler', async function () {
 
       const { piGlobal, token, DebtSettler, LPool } = await loadFixture(deploy)
 
-      const lPool       = await LPool.deploy(piGlobal.address, token.address, dueDate)
-      const debtSettler = await DebtSettler.deploy(lPool.address)
+      const lPool            = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const debtSettler      = await DebtSettler.deploy(lPool.address)
+      const impersonatedPool = await impersonateContract(lPool.address)
 
-      await expect(debtSettler.build('100')).to.be.reverted
+      await expect(debtSettler.connect(impersonatedPool).build('100')).not.to.be.reverted
     })
 
     it('Should work for debt settling when amount >= debt', async function () {
@@ -316,6 +322,72 @@ describe('Debt settler', async function () {
         totalDebt.sub(repayAmount).mul(1000).div(1001),
         totalDebt.sub(repayAmount).mul(1000).div(999)
       )
+    })
+
+    it('Should work until run out of gas', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const {
+        alice,
+        bob,
+        dToken,
+        cPool,
+        lPool,
+        debtSettler,
+        token,
+        treasury,
+      } = fixtures
+
+      await setupCollateral(fixtures)
+
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 40e18 + '')
+      await token.mint(bob.address, 10e18 + '')
+      await token.mint(alice.address, 20e18 + '')
+
+      // Alice collateral
+      await token.connect(alice).approve(cPool.address, 20e18 + '')
+      await expect(cPool.connect(alice)['deposit(uint256)'](20e18 + '')).to.emit(cPool, 'Deposit')
+
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      await lPool.connect(bob).borrow(depositAmount)
+      await lPool.connect(alice).borrow(depositAmount.mul(2))
+
+      // Since it already compute some interests
+      expect(await lPool['debt(address)'](bob.address)).to.be.within(
+        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.00001', 18))
+      )
+
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
+        depositAmount.mul(2)
+      )
+
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
+
+      await token.mint(treasury.address, 20e18 + '')
+      await token.connect(treasury).approve(lPool.address, 100e18 + '')
+
+      const repayAmount = ethers.utils.parseUnits('20', 18)
+      const bobDebt     = await lPool['debt(address)'](bob.address)
+      const aliceDebt   = await lPool['debt(address)'](alice.address)
+
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await debtSettler.connect(treasury).pay({ gasLimit: 200000 })
+
+      const bobDebtAfter   = await lPool['debt(address)'](bob.address)
+      const aliceDebtAfter = await lPool['debt(address)'](alice.address)
+
+      // Bob debt should be paid
+      expect(bobDebtAfter).to.be.lessThan(bobDebt)
+      // Alice debt won't be paid since we run out of gas
+      expect(aliceDebtAfter).to.be.greaterThan(aliceDebt)
+
+      // Clean should only remove bob
+      expect(await debtSettler.recordsLength()).to.be.equal(2)
+      await debtSettler.clean()
+      expect(await debtSettler.recordsLength()).to.be.equal(1)
     })
 
     it('Should recover _stuck_ founds', async function () {
