@@ -333,9 +333,10 @@ contract CollateralPool is PiAdmin, Pausable {
     }
 
     /**
-     * @dev Pauses the pool.
+     * @dev Pauses/Unpauses the pool.
      */
-    function pause() external onlyAdmin nonReentrant {
-        _pause();
+    function togglePause() external onlyAdmin nonReentrant {
+        paused() ? _unpause() : _pause();
     }
+
 }

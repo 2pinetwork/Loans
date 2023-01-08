@@ -47,10 +47,24 @@ describe('Collateral Pool', async function () {
   })
 
   describe('Validations', async function () {
+    it('Should toggle pause', async function () {
+      const { pool } = await loadFixture(deploy)
+
+      expect(await pool.paused()).to.be.equal(false)
+
+      await pool.togglePause()
+
+      expect(await pool.paused()).to.be.equal(true)
+
+      await pool.togglePause()
+
+      expect(await pool.paused()).to.be.equal(false)
+    })
+
     it('Should not allow to pause by non admin', async function () {
       const { pool, alice } = await loadFixture(deploy)
 
-      await expect(pool.connect(alice).pause()).to.be.revertedWithCustomError(
+      await expect(pool.connect(alice).togglePause()).to.be.revertedWithCustomError(
         pool, 'NotAdmin'
       )
     })
@@ -278,7 +292,7 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
-      await pool.pause()
+      await pool.togglePause()
 
       // Overloading Ethers-v6
       await expect(pool.connect(bob)['withdraw(uint256)'](10)).to.be.revertedWith('Pausable: paused')

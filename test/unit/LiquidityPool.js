@@ -149,8 +149,22 @@ describe('Liquidity Pool', async function () {
       const { lPool, alice } = await loadFixture(deploy)
 
       await expect(
-        lPool.connect(alice).pause()
+        lPool.connect(alice).togglePause()
       ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+    })
+
+    it('Should toggle pause', async function () {
+      const { lPool } = await loadFixture(deploy)
+
+      expect(await lPool.paused()).to.be.equal(false)
+
+      await lPool.togglePause()
+
+      expect(await lPool.paused()).to.be.equal(true)
+
+      await lPool.togglePause()
+
+      expect(await lPool.paused()).to.be.equal(false)
     })
 
     it('Should not allow set safebox when non admin', async function () {
@@ -501,7 +515,7 @@ describe('Liquidity Pool', async function () {
     it('Should not work when paused', async function () {
       const { bob, lPool } = await loadFixture(deploy)
 
-      await lPool.pause()
+      await lPool.togglePause()
 
       await expect(
         lPool.connect(bob).borrow(1)

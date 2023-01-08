@@ -407,8 +407,8 @@ contract LiquidityPool is Pausable, PiAdmin {
         return dToken.totalSupply() + iToken.totalSupply();
     }
 
-    function pause() external onlyAdmin {
-        _pause();
+    function togglePause() external onlyAdmin {
+        paused() ? _unpause() : _pause();
     }
 
     function _debt(address _account) internal view returns (uint, uint, uint, uint) {
