@@ -23,7 +23,7 @@ Details:
 - Can be used with or without an underlying strategy to generate yield
 
 On each deposit it returns a share token "2pi-C-assetSymbol" and it's burned on each withdrawal.
-> Note: The yield can't be chosen to auto-repay debt and to be autocompounded at the same time it do one or the other.
+> Note: The yield can't be chosen to auto-repay debt and to be autocompounded at the same time, these functions are mutually exclusive.
 
 # Liquidity Pool
 Pool used to provide liquidity for borrowers. Liquidity to be borrowed is independent from Collateral pool.
@@ -37,7 +37,7 @@ On each deposit it returns a share token "2pi-L-assetSymbol" and burned on each 
 
 ### Borrowing process
 Depending on the amount of collateral deposited (and its usage ratio) the user can borrow assets.
-On each borrow LiquidityPool mint debt tokens [2pi-D-assetSymbol] (for original debt & a different for interest to be paid).
+On each borrow LiquidityPool mint debt tokens [2pi-D-assetSymbol] (for original debt & a different token for the interest to be paid).
 Then on each repay (or liquidation) the interest tokens are burned first and then the "original debt tokens". So the pool always pays the interest first and then the origianl debt (that is because it's a linear loan over time).
 
 > Note: the interest tokens are not minted all the time, only happens when the user interacts with the contract (borrow/repay/liquidation) in other case the debt is calculated.
