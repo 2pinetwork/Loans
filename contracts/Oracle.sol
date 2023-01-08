@@ -9,6 +9,11 @@ import "../interfaces/IPiGlobal.sol";
 import "../interfaces/IPool.sol";
 import "../libraries/Errors.sol";
 
+/**
+ * @title Oracle
+ *
+ * @dev Price oracle to be used by the protocol.
+ */
 contract Oracle is PiAdmin {
     mapping(address => IChainLink) public priceFeeds;
 
@@ -31,12 +36,70 @@ contract Oracle is PiAdmin {
 
     IPiGlobal public immutable piGlobal;
 
+    /**
+     * @dev Throws if the health factor is below the minimum healthy health factor.
+     */
     error LowHealthFactor();
+
+    /**
+     * @dev Throws when the price feed is not a valid one.
+     */
     error InvalidFeed(address);
+
+    /**
+     * @dev Throws when the price time toleration exceeds the maximum allowed.
+     */
     error MaxPriceTimeToleration();
+
+    /**
+     * @dev Throws when the price time exceeds the toleration.
+     */
     error OldPrice();
+
+    /**
+     * @dev Throws when some liquidation function gets called and there is nothing to liquidate.
+     */
     error NothingToLiquidate();
 
+    /**
+     * @dev Emitted when the price time toleration is updated.
+     *
+     * @param _old The old price time toleration.
+     * @param _new The new price time toleration.
+     */
+    event NewPriceTimeToleration(uint _old, uint _new);
+
+    /**
+     * @dev Emitted when a new price feed is added.
+     *
+     * @param _token The token address.
+     * @param _feed The price feed address.
+     */
+    event NewPriceFeed(address _token, address _feed);
+
+    /**
+     * @dev Emitted when the liquidation threshold is updated.
+     *
+     * @param _oldLT The old liquidation threshold.
+     * @param _newLT The new liquidation threshold.
+     * @param _oldLEHF The old liquidation expected health factor.
+     * @param _newLEHF The new liquidation expected health factor.
+     */
+    event NewLiquidationThreshold(uint _oldLT, uint _newLT, uint _oldLEHF, uint _newLEHF);
+
+    /**
+     * @dev Emitted when the liquidation bonus is updated.
+     *
+     * @param _old The old liquidation bonus.
+     * @param _new The new liquidation bonus.
+     */
+    event NewLiquidationBonus(uint _old, uint _new);
+
+    /**
+     * @dev Initializes the contract.
+     *
+     * @param _global The PiGlobal address.
+     */
     constructor(IPiGlobal _global) {
         // at least check the contract
         _global.collateralPools();
@@ -45,12 +108,11 @@ contract Oracle is PiAdmin {
         piGlobal = _global;
     }
 
-    event NewPriceTimeToleration(uint _old, uint _new);
-    event NewPriceFeed(address _token, address _feed);
-    event NewLiquidationThreshold(uint _oldLT, uint _newLT, uint _oldLEHF, uint _newLEHF);
-    event NewLiquidationBonus(uint _old, uint _new);
-
-    // Set max price offset in time permited
+    /**
+     * @dev Sets the max price time offset toleration.
+     *
+     * @param _newPriceTimeToleration The new price time toleration.
+     */
     function setPriceTimeToleration(uint _newPriceTimeToleration) external onlyAdmin nonReentrant {
         if (_newPriceTimeToleration > MAX_PRICE_TIME_TOLERATION) revert MaxPriceTimeToleration();
         if (priceTimeToleration == _newPriceTimeToleration) revert Errors.SameValue();
@@ -60,8 +122,14 @@ contract Oracle is PiAdmin {
         priceTimeToleration = _newPriceTimeToleration;
     }
 
-    // Set the liquidation factor (the minimum HF to be liquidated)
-    // Set the expected HF after for liquidation to only liquidate a little more than "critical" HF
+    /**
+     * @dev Sets the liquidation thresholds. The expected health factor should
+     * be higher or equal to the liquidation threshold. The expected health
+     * factor is the one that the protocol would target after a liquidation.
+     *
+     * @param _newLT The new liquidation threshold.
+     * @param _newLEHF The new liquidation expected health factor.
+     */
     function setLiquidationThreshold(uint _newLT, uint _newLEHF) external onlyAdmin nonReentrant {
         if (_newLT > MAX_THRESHOLD) revert Errors.GreaterThan("LT > MAX_THRESHOLD");
         if (_newLT < MIN_THRESHOLD) revert Errors.LessThan("LT < MIN_THRESHOLD");
@@ -75,7 +143,11 @@ contract Oracle is PiAdmin {
         liquidationExpectedHF = _newLEHF;
     }
 
-    // Set a liquidation bonus percentage for liquidator
+    /**
+     * @dev Sets the liquidation bonus for liquidators.
+     *
+     * @param _newLB The new liquidation bonus.
+     */
     function setLiquidationBonus(uint _newLB) external onlyAdmin nonReentrant {
         if (_newLB > MAX_LIQUIDATION_BONUS) revert Errors.GreaterThan("MAX_LIQUIDATION_BONUS");
         if (_newLB == liquidationBonus) revert Errors.SameValue();
@@ -85,7 +157,12 @@ contract Oracle is PiAdmin {
         liquidationBonus = _newLB;
     }
 
-    // Add token oracle price
+    /**
+     * @dev Adds a new price feed for a token.
+     *
+     * @param _token The token address.
+     * @param _feed The price feed address.
+     */
     function addPriceOracle(address _token, IChainLink _feed) external onlyAdmin nonReentrant {
         if (_token == address(0)) revert Errors.ZeroAddress();
         if (priceFeeds[_token] == _feed) revert Errors.SameValue();
@@ -98,14 +175,27 @@ contract Oracle is PiAdmin {
         emit NewPriceFeed(_token, address(_feed));
     }
 
-    // HF, liquidation Threadhold
+    /**
+     * @dev Returns the health factor for a given user.
+     *
+     * @param _account The user address.
+     *
+     * @return The health factor.
+     */
     function healthFactor(address _account) external view returns (uint) {
         uint _borrowed = _borrowedInUSD(_account);
 
         return _healthFactor(_account, _borrowed);
     }
 
-
+    /**
+     * @dev Returns the available collateral for a given user on an specific asset.
+     *
+     * @param _account The user address.
+     * @param _asset The asset address.
+     *
+     * @return _available The available collateral.
+     */
     function availableCollateralForAsset(address _account, address _asset) external view returns (uint _available) {
         // Put available collateral in token quantity
         _available = _collateralInUSD(_account) * BASE_PRECISION / _normalizedPrice(_asset);
@@ -120,7 +210,15 @@ contract Oracle is PiAdmin {
         (_available >= _borrowed) ? (_available -= _borrowed) : (_available = 0);
     }
 
-    // Return values are liquidableAmount(collateral asset) and debtToBePaid(debt asset)
+    /**
+     * @dev Returns the liquidable amount for a given user on an specific liquidity pool and the debt it would paid.
+     *
+     * @param _account The user address.
+     * @param _liqPool The liquidity pool address.
+     *
+     * @return _liquidableCollateral The liquidable collateral amount.
+     * @return _debtToBePaid The debt to be paid on asset units.
+     */
     function getLiquidableAmounts(address _account, address _liqPool) external view returns (uint _liquidableCollateral, uint _debtToBePaid) {
         // First we check if the pool is expired and try to liquidate the whole debt
         // msg.sender (from) address should be a collateralPool
@@ -177,7 +275,11 @@ contract Oracle is PiAdmin {
          _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
     }
 
-    // Used to raise a Low HF after some actions like liquidation & transfers
+    /**
+     * @dev Health factor check, used to raise if it's lower than expected on liquidation and transfers.
+     *
+     * @param _account The user address.
+     */
     function checkHealthy(address _account) external view {
         uint _borrowed = _borrowedInUSD(_account);
 
