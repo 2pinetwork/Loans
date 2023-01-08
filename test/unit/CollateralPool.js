@@ -3,8 +3,6 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const { impersonateContract, ZERO_ADDRESS } = require('./helpers')
 
-
-
 describe('Collateral Pool', async function () {
   const deploy = async function () {
     const [, alice, bob] = await ethers.getSigners()
@@ -44,6 +42,16 @@ describe('Collateral Pool', async function () {
 
       await expect(Pool.deploy(ZERO_ADDRESS, token.address)).to.be.revertedWithCustomError(
         Pool, 'ZeroAddress'
+      )
+    })
+  })
+
+  describe('Validations', async function () {
+    it('Should not allow to pause by non admin', async function () {
+      const { pool, alice } = await loadFixture(deploy)
+
+      await expect(pool.connect(alice).pause()).to.be.revertedWithCustomError(
+        pool, 'NotAdmin'
       )
     })
   })
@@ -118,7 +126,6 @@ describe('Collateral Pool', async function () {
       )
     })
   })
-
 
   describe('Deposit', async function () {
     it('Should work', async function () {
@@ -256,6 +263,37 @@ describe('Collateral Pool', async function () {
       // Overloading Ethers-v6
       // 500 balance * 1 share / 1000 total Supply => 0
       await expect(pool.connect(bob)['withdraw(uint256)'](1)).to.be.revertedWithCustomError(pool, 'ZeroAmount')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+    })
+
+    it('Should not work when paused', async function () {
+      const { bob, cToken, pool, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await pool.pause()
+
+      // Overloading Ethers-v6
+      await expect(pool.connect(bob)['withdraw(uint256)'](10)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob)['withdraw(uint256)'](10)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob)['withdraw(uint256,address)'](10, bob.address)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob).withdrawAll()).to.be.revertedWith('Pausable: paused')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
     })
