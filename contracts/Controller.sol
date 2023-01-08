@@ -12,6 +12,12 @@ import "../interfaces/IStrategy.sol";
 import "../interfaces/IOracle.sol";
 import "../libraries/Errors.sol";
 
+/**
+ * @title Controller
+ *
+ * @dev Controller used by the collateral pool to handle minting and burning
+ * and setting the strategy to use (none, yield generation or auto-repay)
+ */
 contract Controller is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
@@ -33,19 +39,84 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     uint public depositLimit;
     uint public userDepositLimit;
 
-    event StrategyChanged(address oldStrategy, address newStrategy);
-    event NewTreasury(address oldTreasury, address newTreasury);
-    event NewDepositLimit(uint oldLimit, uint newLimit);
-    event NewUserDepositLimit(uint oldLimit, uint newLimit);
-    event WithdrawalFee(uint amount);
-    event NewWithdrawFee(uint oldFee, uint newFee);
-
+    /**
+     * @dev Emitted when for some reason the founds can't be withdrawn from the strategy
+     */
     error CouldNotWithdrawFromStrategy();
+
+    /**
+     * @dev Emitted when asked amount is greater than the available
+     */
     error InsufficientBalance();
+
+    /**
+     * @dev Emitted when a restricted method is called by a non pool contract
+     */
     error NotPool();
+
+
+    /**
+     * @dev Emitted when trying to set a strategy that is not for the same asset
+     */
     error NotSameAsset();
+
+    /**
+     * @dev Emitted when trying to retire a strategy that still has funds
+     */
     error StrategyStillHasDeposits();
 
+    /**
+     * @dev Emitted when the strategy is changed
+     *
+     * @param oldStrategy The old strategy
+     * @param newStrategy The new strategy
+     */
+    event StrategyChanged(address oldStrategy, address newStrategy);
+
+    /**
+     * @dev Emitted when the treasury is changed
+     *
+     * @param oldTreasury The old treasury
+     * @param newTreasury The new treasury
+     */
+    event NewTreasury(address oldTreasury, address newTreasury);
+
+    /**
+     * @dev Emitted when a new deposit limit is set
+     *
+     * @param oldLimit The old limit
+     * @param newLimit The new limit
+     */
+    event NewDepositLimit(uint oldLimit, uint newLimit);
+
+    /**
+     * @dev Emitted when a new user deposit limit is set
+     *
+     * @param oldLimit The old limit
+     * @param newLimit The new limit
+     */
+    event NewUserDepositLimit(uint oldLimit, uint newLimit);
+
+    /**
+     * @dev Emitted when a new withdraw fee is set
+     *
+     * @param amount The amount of the fee
+     */
+    event WithdrawalFee(uint amount);
+
+    /**
+     * @dev Emitted when a new withdraw fee is set
+     *
+     * @param oldFee The old fee
+     * @param newFee The new fee
+     */
+    event NewWithdrawFee(uint oldFee, uint newFee);
+
+    /**
+     * @dev Initializes the contract
+     *
+     * @param _pool The address of the collateral pool
+     */
     constructor(ICPool _pool) ERC20(
         string(abi.encodePacked("2pi Collateral ", ERC20(_pool.asset()).symbol())),
         string(abi.encodePacked("2pi-C-", ERC20(_pool.asset()).symbol()))
@@ -56,11 +127,19 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         pool = address(_pool);
     }
 
+    /**
+     * @dev Modifier to restrict access to only the collateral pool
+     */
     modifier onlyPool() {
         if (msg.sender != pool) revert NotPool();
         _;
     }
 
+    /**
+     * @dev Returns the decimals of the collateral token
+     *
+     * @return The decimals of the collateral token
+     */
     function decimals() override public view returns (uint8) { return asset.decimals(); }
 
     // AferTransfer callback to prevent transfers when a debt is still open
@@ -70,6 +149,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Sets the treasury address
+     *
+     * @param _treasury The address of the treasury
+     */
     function setTreasury(address _treasury) external onlyOwner nonReentrant {
         if (_treasury == treasury) revert Errors.SameValue();
         if (_treasury == address(0)) revert Errors.ZeroAddress();
@@ -79,8 +163,12 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         treasury = _treasury;
     }
 
-    // ZeroAddress means that there's no strategy to put the assets, so the assets
-    // will be kept in the controller (no yield)
+    /**
+     * @dev Sets the strategy to use. Zero address means that there's no strategy to put the assets, so
+     * the assets will be kept in the controller (no yield)
+     *
+     * @param _newStrategy The address of the strategy
+     */
     function setStrategy(IStrategy _newStrategy) external onlyOwner nonReentrant {
         if (_newStrategy == strategy) revert Errors.SameValue();
 
@@ -99,6 +187,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         _strategyDeposit();
     }
 
+    /**
+     * @dev Sets the withdrawal fee
+     *
+     * @param _fee The fee to set
+     */
     function setWithdrawFee(uint _fee) external onlyOwner nonReentrant {
         if (_fee == withdrawFee) revert Errors.SameValue();
         if (_fee > MAX_WITHDRAW_FEE) revert Errors.GreaterThan('MAX_WITHDRAW_FEE');
@@ -108,6 +201,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         withdrawFee = _fee;
     }
 
+    /**
+     * @dev Sets the deposit limit
+     *
+     * @param _amount The amount to set
+     */
     function setDepositLimit(uint _amount) external onlyOwner nonReentrant {
         if (_amount == depositLimit) revert Errors.SameValue();
 
@@ -116,6 +214,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         depositLimit = _amount;
     }
 
+    /**
+     * @dev Sets the user deposit limit
+     *
+     * @param _amount The amount to set
+     */
     function setUserDepositLimit(uint _amount) external onlyOwner nonReentrant {
         if (_amount == userDepositLimit) revert Errors.SameValue();
 
@@ -124,6 +227,12 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         userDepositLimit = _amount;
     }
 
+    /**
+     * @dev Deposits collateral into the pool
+     *
+     * @param _senderUser The user account that is depositing
+     * @param _amount The amount to deposit
+     */
     function deposit(address _senderUser, uint _amount) external nonReentrant onlyPool returns (uint _shares) {
         if (_amount <= 0) revert Errors.ZeroAmount();
         _checkDepositLimit(_senderUser, _amount);
@@ -147,7 +256,12 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         _strategyDeposit();
     }
 
-    // Withdraw partial funds, normally used with a vault withdrawal
+    /**
+     * @dev Withdraws collateral from the pool, normally used with a vault withdrawal
+     *
+     * @param _senderUser The user account that is withdrawing
+     * @param _shares The amount of shares to withdraw
+     */
     function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint) {
         if (_shares <= 0) revert Errors.ZeroShares();
         if (_withStrat()) strategy.beforeMovement();
@@ -158,9 +272,16 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         return _withdraw(_senderUser, _shares, _amount, true);
     }
 
-    // Same as withdraw, but without withdrawal fee
-    // and if the withdrawn amount is more than the requested amount
-    // it will be returned to the strategy. We don't want to liquidate more than needed
+    /**
+     * @dev Withdraws collateral from the pool, without withdrawal fee. If the
+     * withdrawn amount is more than the requested the rest will be
+     * returned to the strategy. We don't want to liquidate more than needed
+     *
+     * @param _senderUser The user account that is withdrawing
+     * @param _expectedAmount The amount of collateral to withdraw
+     *
+     * @return _withdrawn The amount of collateral withdrawn
+     */
     function withdrawForLiquidation(address _senderUser, uint _expectedAmount) external onlyPool nonReentrant returns (uint _withdrawn) {
         if (_expectedAmount <= 0) revert Errors.ZeroAmount();
         if (_withStrat()) strategy.beforeMovement();
@@ -210,15 +331,34 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         return _amount;
     }
 
-    function strategyBalance() public view returns (uint){
+    /**
+     * @dev Returns the balance of the strategy
+     *
+     * @return The balance of the strategy
+     */
+    function strategyBalance() public view returns (uint) {
         return _withStrat() ? strategy.balance() : 0;
     }
 
+    /**
+     * @dev Returns this controller balance of the asset
+     *
+     * @return The balance of the asset
+     */
     function assetBalance() public view returns (uint) { return asset.balanceOf(address(this)); }
 
+    /**
+     * @dev Returns the balance of the asset on this controller and the strategy
+     *
+     * @return The balance of the asset
+     */
     function balance() public view returns (uint) { return assetBalance() + strategyBalance(); }
 
-    // Check whats the max available amount to deposit
+    /**
+     * @dev Returns the max amount of asset that can be deposited
+     *
+     * @return _available The max amount of asset that can be deposited
+     */
     function availableDeposit() external view returns (uint _available) {
         if (depositLimit <= 0) { // without limit
             _available = type(uint).max;
@@ -227,6 +367,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Returns the max amount of asset that can be deposited by the user
+     *
+     * @param _user The user to check
+     *
+     * @return _available The max amount of asset that can be deposited by the user
+     */
     function availableUserDeposit(address _user) public view returns (uint _available) {
         if (userDepositLimit <= 0) { // without limit
             _available = type(uint).max;
@@ -269,6 +416,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
             revert Errors.GreaterThan("userDepositLimit");
     }
 
+    /**
+     * @dev Returns the price per share
+     *
+     * @return The price per share
+     */
     function pricePerShare() public view returns (uint) {
         return totalSupply() <= 0 ? _precision() : (balance() * _precision() / totalSupply());
     }
