@@ -10,6 +10,14 @@ import {ILPool} from "../interfaces/IPool.sol";
 
 import "../libraries/Errors.sol";
 
+/**
+ * @title DebtSettler
+ *
+ * @notice This contract is used to settle debt when the protocol earns interest.
+ *
+ * @dev This contract is used to settle debt when the protocol earns interest.
+ * It contains the list of borrowers and the amount of credit they have.
+ */
 contract DebtSettler is ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
     using EnumerableMap for EnumerableMap.AddressToUintMap;
@@ -26,6 +34,11 @@ contract DebtSettler is ReentrancyGuard {
     error InvalidPool();
     error UnknownSender();
 
+    /**
+     * @dev Initialize the contract.
+     *
+     * @param _pool The liquidity pool address.
+     */
     constructor(ILPool _pool) {
         if (address(_pool) == address(0)) revert Errors.ZeroAddress();
         if (_pool.expired()) revert InvalidPool();
@@ -34,11 +47,19 @@ contract DebtSettler is ReentrancyGuard {
         asset = IERC20Metadata(_pool.asset());
     }
 
+    /**
+     * @dev Modifier to restrict access to the liquidity pool.
+     */
     modifier onlyPool() {
         if (msg.sender != address(pool)) revert UnknownSender();
         _;
     }
 
+    /**
+     * @dev Build a list of borrowers and the amount of credit they have.
+     *
+     * @param _amount The amount of credit to distribute between borrowers.
+     */
     function build(uint _amount) external onlyPool nonReentrant {
         uint _totalDebt = 0;
         uint _length = _borrowers.length();
@@ -67,6 +88,11 @@ contract DebtSettler is ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Settle the debt to all borrowers registered using the build() function.
+     *
+     * If for some reason it runs out of gas, it will stop on the last borrower that could be settled.
+     */
     function pay() external nonReentrant {
         asset.approve(address(pool), asset.balanceOf(address(this)));
 
@@ -83,6 +109,9 @@ contract DebtSettler is ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Clean up the list of borrowers which have no debt left.
+     */
     function clean() external nonReentrant {
         address[] memory _toRemove = new address[](_records.length());
         uint _toRemoveLength = 0;
@@ -98,18 +127,38 @@ contract DebtSettler is ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Get the number of records in the list (borrowers -> credit).
+     *
+     * @return The number of records.
+     */
     function recordsLength() external view returns (uint) {
         return _records.length();
     }
 
+    /**
+     * @dev Add a borrower to the list.
+     *
+     * @param _borrower The borrower address.
+     */
     function addBorrower(address _borrower) external onlyPool nonReentrant {
         _borrowers.add(_borrower);
     }
 
+    /**
+     * @dev Remove a borrower from the list.
+     *
+     * @param _borrower The borrower address.
+     */
     function removeBorrower(address _borrower) external onlyPool nonReentrant {
         _borrowers.remove(_borrower);
     }
 
+    /**
+     * @dev Rescue founds from the contract. Just in case something goes wrong
+     * and we need to recover funds. They are sent to the treasury and only
+     * works if the list of borrowers is empty.
+     */
     function rescueFounds() external nonReentrant {
         uint _balance = asset.balanceOf(address(this));
 
