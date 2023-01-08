@@ -144,6 +144,40 @@ describe('Liquidity Pool', async function () {
     })
   })
 
+  describe('Validations', async function () {
+    it('Should not allow pause when non admin', async function () {
+      const { lPool, alice } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).pause()
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+    })
+
+    it('Should not allow set safebox when non admin', async function () {
+      const { lPool, alice } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(alice).setSafeBoxEnabled(true)
+      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+    })
+
+    it('Should revert when deposit zero amount', async function() {
+      const { bob, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(bob)['deposit(uint256)'](0)
+      ).to.be.revertedWithCustomError(lPool, 'ZeroShares')
+    })
+
+    it('Should revert when withdraw zero shares', async function () {
+      const { bob, lPool } = await loadFixture(deploy)
+
+      await expect(
+        lPool.connect(bob)['withdraw(uint256)'](0)
+      ).to.be.revertedWithCustomError(lPool, 'ZeroShares')
+    })
+  })
+
   describe('setOriginatorFee', async function () {
     it('Should not work', async function () {
       const { alice, dToken, lPool } = await loadFixture(deploy)
@@ -464,6 +498,16 @@ describe('Liquidity Pool', async function () {
       )
     })
 
+    it('Should not work when paused', async function () {
+      const { bob, lPool } = await loadFixture(deploy)
+
+      await lPool.pause()
+
+      await expect(
+        lPool.connect(bob).borrow(1)
+      ).to.be.revertedWith('Pausable: paused')
+    })
+
     it('Should not work without liquidity', async function () {
       const { bob, lPool, token } = await loadFixture(deploy)
 
@@ -620,12 +664,21 @@ describe('Liquidity Pool', async function () {
 
     it('Should not work for expired pool', async function () {
       const { piGlobal, token, LPool } = await loadFixture(deploy)
-      const dueDate          = (await ethers.provider.getBlock()).timestamp + 10
-      const lPool            = await LPool.deploy(piGlobal.address, token.address, dueDate)
+
+      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
+      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
       await mine(10)
 
       await expect(lPool.borrow(1)).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
+
+      await expect(
+        lPool['deposit(uint256)'](1)
+      ).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
+
+      await expect(
+        lPool['deposit(uint256,address)'](1, token.address)
+      ).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
     })
 
     it('Should work with originatorFee', async function () {
