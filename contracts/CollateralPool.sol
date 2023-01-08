@@ -192,4 +192,8 @@ contract CollateralPool is PiAdmin, Pausable {
 
         _asset.safeTransfer(_treasury, _asset.balanceOf(address(this)));
     }
+
+    function pause() external onlyAdmin nonReentrant {
+        _pause();
+    }
 }
