@@ -1,4 +1,4 @@
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const ZERO_ADDRESS = ethers.constants.AddressZero
 
 module.exports = {
   ZERO_ADDRESS
