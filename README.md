@@ -60,6 +60,9 @@ Liquidations will happened if the HealthFactor(HF) is under the Oracle.Liquidati
 - DebtSettler: Used to be the "payer" between the strategy harvest (yield) and the LiquidityPool in the auto-repay process
 - SafeBox: LiquidityPool use it as a "safe box" in the repay process to put the repayment funds there instead of leaving it in the pool to be borrowed again.
 
+### Strategies
+When needed strategies will be taken from https://github.com/2pinetwork/contracts and adapted to handle auto-repay with DebtSettler
+
 ### Other notes
 - CollateralPool.paused is used to halt the withdrawal process (the deposit process can be halted changing the Controller.depositLimit to 1)
 - LiquidityPool.paused is only used to halt borrow process
