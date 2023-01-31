@@ -133,8 +133,6 @@ contract PiGlobal is PiAdmin {
 
         if (! liquidityPoolsSet.add(_pool)) revert AlreadyExists();
 
-        liquidityPoolsSet.add(_pool);
-
         emit NewLiquidityPool(_pool);
     }
 
