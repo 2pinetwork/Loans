@@ -390,6 +390,36 @@ contract LiquidityPool is Pausable, PiAdmin {
     }
 
     /**
+     * @dev Returns the shares equivalent of the amount of liquidity.
+     *
+     * @param _amount The amount of liquidity.
+     *
+     * @return The shares equivalent of the amount of liquidity.
+     */
+    function convertToShares(uint _amount) public view returns (uint) {
+        uint _totalSupply = lToken.totalSupply();
+
+        if (_totalSupply == 0) return _amount;
+
+        return _amount * _totalSupply / _balanceForSharesCalc();
+    }
+
+    /**
+     * @dev Returns the liquidity equivalent of the amount of shares.
+     *
+     * @param _shares The amount of shares.
+     *
+     * @return The liquidity equivalent of the amount of shares.
+     */
+    function convertToAssets(uint _shares) public view returns (uint) {
+        uint _totalSupply = lToken.totalSupply();
+
+        if (_totalSupply == 0) return _shares;
+
+        return _shares * _balanceForSharesCalc() / _totalSupply;
+    }
+
+    /**
      * @dev Deposits liquidity on behalf of the user.
      *
      * @param _amount The amount of liquidity to deposit.

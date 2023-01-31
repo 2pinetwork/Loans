@@ -336,9 +336,19 @@ describe('Liquidity Pool', async function () {
       await token.connect(alice).approve(lPool.address, 1000)
       await token.connect(bob).approve(lPool.address, 1000)
 
+      // Check "expected shares" calculation before deposit
+      expect(await lPool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation before deposit
+      expect(await lPool.convertToAssets(1000)).to.be.equal(1000)
+
       // Overloading Ethers-v6
       expect(await lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+
+      // Check "expected shares" calculation after deposit
+      expect(await lPool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation after deposit
+      expect(await lPool.convertToAssets(1000)).to.be.equal(1000)
 
       await token.mint(lPool.address, 8) // just to change the shares proportion
 
