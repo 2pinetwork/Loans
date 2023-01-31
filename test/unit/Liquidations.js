@@ -115,7 +115,7 @@ describe('Liquidation', async function () {
       DebtSettler,
     } = fixtures
 
-    const dueDate     = (await ethers.provider.getBlock()).timestamp + 20
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (6 * 24 * 60 * 60) // 6 days
     const lPool       = await LPool.deploy(piGlobal.address, token.address, dueDate)
     const debtSettler = await DebtSettler.deploy(lPool.address)
 
@@ -135,7 +135,7 @@ describe('Liquidation', async function () {
     // Skip low HF & LF...
     await lPool.connect(bob).borrow(depositAmount.div(10))
 
-    await mine(20)
+    await mine(6 * 24 * 60 * 60 + 20) // 6 days and 20 seconds
 
     const debt = await lPool['debt(address)'](bob.address)
 
@@ -171,7 +171,7 @@ describe('Liquidation', async function () {
 
     const token2      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
     const tokenFeed   = await TokenFeed.deploy(3e8)
-    const dueDate     = (await ethers.provider.getBlock()).timestamp + 20
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (6 * 24 * 60 * 60) // 6 days
     const lPool       = await LPool.deploy(piGlobal.address, token2.address, dueDate)
     const debtSettler = await DebtSettler.deploy(lPool.address)
 
@@ -193,7 +193,7 @@ describe('Liquidation', async function () {
     const borrowAmount = depositAmount.mul(13).div(3).div(10)
     await lPool.connect(bob).borrow(borrowAmount)
 
-    await mine(10)
+    await mine(6 * 24 * 60 * 60 + 10) // 6 days and 10 seconds
 
     const debt = await lPool['debt(address)'](bob.address)
 

@@ -121,15 +121,16 @@ describe('Liquidity Pool', async function () {
     })
 
     it('Should not work', async function () {
-      const { piGlobal, token, LPool } = await loadFixture(deploy)
+      const { piGlobal, token, LPool, lPool } = await loadFixture(deploy)
 
-      const PiGlobal = await ethers.getContractFactory('PiGlobal')
-      const ts       = (await ethers.provider.getBlock()).timestamp
-      const dueDate  = ts + (365 * 24 * 60 * 60)
+      const PiGlobal    = await ethers.getContractFactory('PiGlobal')
+      const minDuration = await lPool.MIN_DURATION()
+      const ts          = (await ethers.provider.getBlock()).timestamp
+      const dueDate     = ts + (365 * 24 * 60 * 60)
 
       await expect(
-        LPool.deploy(piGlobal.address, token.address, ts - 1)
-      ).to.be.revertedWithCustomError(LPool, 'DueDateInThePast')
+        LPool.deploy(piGlobal.address, token.address, minDuration.add(ts))
+      ).to.be.revertedWithCustomError(LPool, 'DueDateTooSoon')
 
       await expect(
         LPool.deploy(ZERO_ADDRESS, token.address, dueDate)
@@ -387,14 +388,15 @@ describe('Liquidity Pool', async function () {
     })
 
     it('Should not work for expired pool', async function () {
-      const { piGlobal, token, LPool } = await loadFixture(deploy)
+      const { piGlobal, token, LPool, lPool } = await loadFixture(deploy)
 
-      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
-      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const minDuration = await lPool.MIN_DURATION()
+      const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 10)
+      const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
-      await mine(10)
+      await mine(minDuration.add(10))
 
-      await expect(lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
+      await expect(_lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
     })
   })
 
@@ -677,22 +679,23 @@ describe('Liquidity Pool', async function () {
     })
 
     it('Should not work for expired pool', async function () {
-      const { piGlobal, token, LPool } = await loadFixture(deploy)
+      const { piGlobal, token, LPool, lPool } = await loadFixture(deploy)
 
-      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
-      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const minDuration = await lPool.MIN_DURATION()
+      const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 10)
+      const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
-      await mine(10)
+      await mine(minDuration.add(10))
 
-      await expect(lPool.borrow(1)).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
-
-      await expect(
-        lPool['deposit(uint256)'](1)
-      ).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
+      await expect(_lPool.borrow(1)).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
 
       await expect(
-        lPool['deposit(uint256,address)'](1, token.address)
-      ).to.be.revertedWithCustomError(lPool, 'ExpiredPool')
+        _lPool['deposit(uint256)'](1)
+      ).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
+
+      await expect(
+        _lPool['deposit(uint256,address)'](1, token.address)
+      ).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
     })
 
     it('Should work with originatorFee', async function () {
@@ -745,17 +748,18 @@ describe('Liquidity Pool', async function () {
     it('Should work for expired pool', async function () {
       const fixtures = await loadFixture(deploy)
 
-      const { bob, piGlobal, token, LPool, DebtSettler } = fixtures
+      const { bob, piGlobal, token, LPool, lPool, DebtSettler } = fixtures
 
-      const dueDate     = (await ethers.provider.getBlock()).timestamp + 20
-      const lPool       = await LPool.deploy(piGlobal.address, token.address, dueDate)
-      const debtSettler = await DebtSettler.deploy(lPool.address)
+      const minDuration = await lPool.MIN_DURATION()
+      const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 20)
+      const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const debtSettler = await DebtSettler.deploy(_lPool.address)
 
       await Promise.all([
-        lPool.setDebtSettler(debtSettler.address),
-        token.mint(lPool.address, 10e18 + ''),
-        piGlobal.addLiquidityPool(lPool.address),
-        setupCollateral({...fixtures, lPool}),
+        _lPool.setDebtSettler(debtSettler.address),
+        token.mint(_lPool.address, 10e18 + ''),
+        piGlobal.addLiquidityPool(_lPool.address),
+        setupCollateral({...fixtures, lPool: _lPool}),
       ])
 
       // Add tokens for Repayment
@@ -763,19 +767,19 @@ describe('Liquidity Pool', async function () {
 
       const depositAmount = ethers.utils.parseUnits('9.9', 18)
 
-      await lPool.connect(bob).borrow(depositAmount)
+      await _lPool.connect(bob).borrow(depositAmount)
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
+      expect(await _lPool['debt(address)'](bob.address)).to.be.equal(depositAmount)
 
-      await mine(20)
+      await mine(minDuration.add(20))
 
-      await token.connect(bob).approve(lPool.address, 100e18 + '')
+      await token.connect(bob).approve(_lPool.address, 100e18 + '')
 
-      expect(await lPool.expired()).to.be.equal(true)
+      expect(await _lPool.expired()).to.be.equal(true)
 
       // Should repay with expired pool
-      await expect(lPool.connect(bob).repay(depositAmount)).to.emit(
-        lPool, 'Repay'
+      await expect(_lPool.connect(bob).repay(depositAmount)).to.emit(
+        _lPool, 'Repay'
       ).withArgs(
         bob.address, depositAmount
       )
