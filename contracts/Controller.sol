@@ -98,7 +98,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     event NewUserDepositLimit(uint oldLimit, uint newLimit);
 
     /**
-     * @dev Emitted when a new withdraw fee is set
+     * @dev Emitted when withdraw fee is taken
      *
      * @param amount The amount of the fee
      */
