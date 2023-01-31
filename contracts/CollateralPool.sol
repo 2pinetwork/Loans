@@ -165,6 +165,28 @@ contract CollateralPool is PiAdmin, Pausable {
     }
 
     /**
+     * @dev Returns the shares equivalent of the amount of liquidity.
+     *
+     * @param _amount The amount of liquidity.
+     *
+     * @return The shares equivalent of the amount of liquidity.
+     */
+    function convertToShares(uint _amount) public view returns (uint) {
+        return controller.convertToShares(_amount);
+    }
+
+    /**
+     * @dev Returns the liquidity equivalent of the amount of shares.
+     *
+     * @param _shares The amount of shares.
+     *
+     * @return The liquidity equivalent of the amount of shares.
+     */
+    function convertToAssets(uint _shares) public view returns (uint) {
+        return controller.convertToAssets(_shares);
+    }
+
+    /**
      * @dev Returns the total balance of the controller.
      *
      * @return The total balance of the controller.

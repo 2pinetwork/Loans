@@ -355,6 +355,34 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     function balance() public view returns (uint) { return assetBalance() + strategyBalance(); }
 
     /**
+     * @dev Returns the shares equivalent of the amount of liquidity.
+     *
+     * @param _amount The amount of liquidity
+     *
+     * @return The shares equivalent of the amount of liquidity
+     */
+    function convertToShares(uint _amount) external view returns (uint) {
+        // Save some gas
+        uint _totalSupply = totalSupply();
+
+        return (_totalSupply <= 0) ? _amount : (_amount * _totalSupply) / balance();
+    }
+
+    /**
+     * @dev Returns the amount of liquidity equivalent of the shares.
+     *
+     * @param _shares The amount of shares
+     *
+     * @return The amount of liquidity equivalent of the shares
+     */
+    function convertToAssets(uint _shares) external view returns (uint) {
+        // Save some gas
+        uint _totalSupply = totalSupply();
+
+        return (_totalSupply <= 0) ? _shares : (_shares * balance()) / _totalSupply;
+    }
+
+    /**
      * @dev Returns the max amount of asset that can be deposited
      *
      * @return _available The max amount of asset that can be deposited

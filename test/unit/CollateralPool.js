@@ -150,11 +150,24 @@ describe('Collateral Pool', async function () {
       await token.connect(alice).approve(pool.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
 
+      // Check "expected shares" calculation before deposit
+      expect(await pool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation before deposit
+      expect(await pool.convertToAssets(1000)).to.be.equal(1000)
+
       // Overloading Ethers-v6
       expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
 
+      // Check "expected shares" calculation after deposit
+      expect(await pool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation after deposit
+      expect(await pool.convertToAssets(1000)).to.be.equal(1000)
+
       await token.mint(cToken.address, 8) // just to change the shares proportion
+
+      // Check "expected shares" calculation after share proportion change
+      expect(await pool.convertToShares(1000)).to.be.equal(992)
 
       expect(await pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
