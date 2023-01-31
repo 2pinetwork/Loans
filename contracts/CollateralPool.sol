@@ -285,7 +285,7 @@ contract CollateralPool is PiAdmin, Pausable {
 
         // Just in case
         if (_collateralToBeUsed > _liquidableCollateral) revert CantLiquidate("_amount uses too much collateral");
-        if (_collateralToBeUsed <= 0) revert CantLiquidate("Collateral unused");
+        if (_collateralToBeUsed == 0) revert CantLiquidate("Collateral unused");
 
         // Get HF before liquidation
         uint _hf = _oracle.healthFactor(_account);
@@ -316,7 +316,7 @@ contract CollateralPool is PiAdmin, Pausable {
     function _precision() internal view returns (uint) { return 10 ** decimals(); }
 
     function _deposit(uint _amount, address _onBehalfOf) internal {
-        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_amount == 0) revert Errors.ZeroAmount();
 
         // Get asset from sender
         asset.safeTransferFrom(msg.sender, address(this), _amount);
@@ -328,10 +328,10 @@ contract CollateralPool is PiAdmin, Pausable {
     }
 
     function _withdraw(uint _shares, address _to) internal returns (uint) {
-        if (_shares <= 0) revert Errors.ZeroShares();
+        if (_shares == 0) revert Errors.ZeroShares();
 
         uint _withdrawn = controller.withdraw(msg.sender, _shares);
-        if (_withdrawn <= 0) revert NoFundsWithdrawn();
+        if (_withdrawn == 0) revert NoFundsWithdrawn();
 
         asset.safeTransfer(_to, _withdrawn);
 

@@ -167,8 +167,8 @@ contract Oracle is PiAdmin {
         if (_token == address(0)) revert Errors.ZeroAddress();
         if (priceFeeds[_token] == _feed) revert Errors.SameValue();
 
-        (uint80 round, int price,,,) = _feed.latestRoundData();
-        if (round <= 0 || price <= 0 || _feed.decimals() <= 6) revert InvalidFeed(_token);
+        (uint80 _round, int _price,,,) = _feed.latestRoundData();
+        if (_round == 0 || _price <= 0 || _feed.decimals() <= 6) revert InvalidFeed(_token);
 
         priceFeeds[_token] = _feed;
 
@@ -203,7 +203,7 @@ contract Oracle is PiAdmin {
         // Put _available (in BASE_DECIMALS precision) in token precision
         _available = _fixPrecision(BASE_DECIMALS, IERC20Metadata(_asset).decimals(), _available);
 
-        if (_available <= 0) return 0;
+        if (_available == 0) return 0;
 
         uint _borrowed = _borrowedInAsset(_account, _asset);
 
@@ -228,7 +228,7 @@ contract Oracle is PiAdmin {
         uint _debt = _lPool.debt(_account);
         uint _collateral = _cPool.balanceOf(_account);
 
-        if (_debt <= 0 || _collateral <= 0) revert NothingToLiquidate();
+        if (_debt == 0 || _collateral == 0) revert NothingToLiquidate();
 
         uint _cPrice = _normalizedPrice(_cPool.asset());
         uint _lPrice = _normalizedPrice(_lPool.asset());
@@ -287,7 +287,7 @@ contract Oracle is PiAdmin {
     }
 
     function _healthFactor(address _account, uint _borrowedInUsd) internal view returns (uint) {
-        if (_borrowedInUsd <= 0) return type(uint).max;
+        if (_borrowedInUsd == 0) return type(uint).max;
 
         return _collateralInUSD(_account) * BASE_PRECISION / _borrowedInUsd;
     }
@@ -330,7 +330,7 @@ contract Oracle is PiAdmin {
             ILPool _pool = ILPool(_lPools[i]);
             uint _price = _normalizedPrice(_pool.asset());
 
-            if (_price <= 0) revert InvalidFeed(_pool.asset());
+            if (_price == 0) revert InvalidFeed(_pool.asset());
 
             uint _debt  = _pool.debt(_account);
 
@@ -345,11 +345,11 @@ contract Oracle is PiAdmin {
             ICPool _pool = ICPool(_cPools[i]);
             uint _price = _normalizedPrice(_pool.asset());
 
-            if (_price <= 0) revert InvalidFeed(_pool.asset());
+            if (_price == 0) revert InvalidFeed(_pool.asset());
 
             uint _available = _pool.availableCollateral(_account);
 
-            if (_available <= 0) continue;
+            if (_available == 0) continue;
 
             // Collateral in USD in 18 decimals precision
             _availableInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;

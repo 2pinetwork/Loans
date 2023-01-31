@@ -447,13 +447,13 @@ contract LiquidityPool is Pausable, PiAdmin {
         uint _supply = lToken.totalSupply();
         uint _shares;
 
-        if (_supply <= 0) {
+        if (_supply == 0) {
             _shares = _amount;
         } else {
             _shares = (_amount * _supply) / _before;
         }
 
-        if (_shares <= 0) revert Errors.ZeroShares();
+        if (_shares == 0) revert Errors.ZeroShares();
 
         lToken.mint(_onBehalfOf, _shares);
 
@@ -493,7 +493,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     }
 
     function _withdraw(uint _shares, address _to) internal returns (uint) {
-        if (_shares <= 0) revert Errors.ZeroShares();
+        if (_shares == 0) revert Errors.ZeroShares();
 
         uint _amount = (_balanceForSharesCalc() * _shares) / lToken.totalSupply();
 
@@ -524,7 +524,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      * @param _amount The amount of asset to borrow.
      */
     function borrow(uint _amount) external nonReentrant whenNotPaused notExpired {
-        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_amount == 0) revert Errors.ZeroAmount();
         if (_amount > balance()) revert InsufficientLiquidity();
         _checkBorrowAmount(_amount);
 
@@ -601,7 +601,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {
-        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_amount == 0) revert Errors.ZeroAmount();
         if (_timestamps[_account] == 0) revert NoDebt();
 
         (
@@ -723,7 +723,7 @@ contract LiquidityPool is Pausable, PiAdmin {
         uint _dBal = dToken.balanceOf(_account);
         uint _iBal = iToken.balanceOf(_account);
 
-        if (_dBal <= 0 && _iBal <= 0) return (0, 0, 0, 0);
+        if (_dBal == 0 && _iBal == 0) return (0, 0, 0, 0);
 
         uint _notMintedInterest = _debtTokenDiff(_account);
 
@@ -734,7 +734,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     function _debtTokenDiff(address _account) internal view returns (uint) {
         uint _bal = dToken.balanceOf(_account);
 
-        if (_bal <= 0 || _timestamps[_account] <= 0) return 0;
+        if (_bal == 0 || _timestamps[_account] == 0) return 0;
 
         // Difference between the last interaction and (now or due date)
         uint _timeDiff = block.timestamp;
@@ -783,7 +783,7 @@ contract LiquidityPool is Pausable, PiAdmin {
             _fee = _interestAmount * piFee / (piFee + interestRate);
         }
 
-        if (_fee <= 0) return 0;
+        if (_fee == 0) return 0;
 
         asset.safeTransfer(treasury, _fee);
 
