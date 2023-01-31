@@ -685,7 +685,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     /**
      * @dev Toggles the pause state of the pool.
      */
-    function togglePause() external onlyAdmin {
+    function togglePause() external onlyPauser {
         paused() ? _unpause() : _pause();
     }
 

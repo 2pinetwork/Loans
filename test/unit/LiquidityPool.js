@@ -150,7 +150,7 @@ describe('Liquidity Pool', async function () {
 
       await expect(
         lPool.connect(alice).togglePause()
-      ).to.be.revertedWithCustomError(lPool, 'NotAdmin')
+      ).to.be.revertedWithCustomError(lPool, 'NotPauser')
     })
 
     it('Should toggle pause', async function () {
