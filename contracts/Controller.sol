@@ -234,7 +234,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @param _amount The amount to deposit
      */
     function deposit(address _senderUser, uint _amount) external nonReentrant onlyPool returns (uint _shares) {
-        if (_amount <= 0) revert Errors.ZeroAmount();
+        if (_amount == 0) revert Errors.ZeroAmount();
         _checkDepositLimit(_senderUser, _amount);
 
         if (_withStrat()) strategy.beforeMovement();
@@ -249,7 +249,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         uint _diff = balance() - _before;
 
-        _shares = (totalSupply() <= 0) ? _diff : (_diff * totalSupply()) / _before;
+        _shares = (totalSupply() == 0) ? _diff : (_diff * totalSupply()) / _before;
 
         _mint(_senderUser, _shares);
 
@@ -263,7 +263,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @param _shares The amount of shares to withdraw
      */
     function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint) {
-        if (_shares <= 0) revert Errors.ZeroShares();
+        if (_shares == 0) revert Errors.ZeroShares();
         if (_withStrat()) strategy.beforeMovement();
 
         uint _amount = (balance() * _shares) / totalSupply();
@@ -283,7 +283,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @return _withdrawn The amount of collateral withdrawn
      */
     function withdrawForLiquidation(address _senderUser, uint _expectedAmount) external onlyPool nonReentrant returns (uint _withdrawn) {
-        if (_expectedAmount <= 0) revert Errors.ZeroAmount();
+        if (_expectedAmount == 0) revert Errors.ZeroAmount();
         if (_withStrat()) strategy.beforeMovement();
 
         uint _shares = _expectedAmount * totalSupply() / balance();
@@ -292,7 +292,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function _withdraw(address _senderUser, uint _shares, uint _amount, bool _withFee) internal returns (uint) {
-        if (_amount <= 0 || _shares <= 0) revert Errors.ZeroAmount();
+        if (_amount == 0 || _shares == 0) revert Errors.ZeroAmount();
 
         _burn(_senderUser, _shares);
 
@@ -306,8 +306,8 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
             // withdraw will revert if anyything weird happend with the
             // transfer back but just in case we ensure that the withdraw is
             // positive
-            uint withdrawn = strategy.withdraw(_diff);
-            if (withdrawn <= 0) revert CouldNotWithdrawFromStrategy();
+            uint _withdrawn = strategy.withdraw(_diff);
+            if (_withdrawn == 0) revert CouldNotWithdrawFromStrategy();
 
             _balance = assetBalance();
             if (_balance < _amount) _amount = _balance;
@@ -360,7 +360,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @return _available The max amount of asset that can be deposited
      */
     function availableDeposit() external view returns (uint _available) {
-        if (depositLimit <= 0) { // without limit
+        if (depositLimit == 0) { // without limit
             _available = type(uint).max;
         } else if (balance() < depositLimit) {
             _available = depositLimit - balance();
@@ -375,7 +375,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @return _available The max amount of asset that can be deposited by the user
      */
     function availableUserDeposit(address _user) public view returns (uint _available) {
-        if (userDepositLimit <= 0) { // without limit
+        if (userDepositLimit == 0) { // without limit
             _available = type(uint).max;
         } else {
             _available = userDepositLimit;
@@ -422,7 +422,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @return The price per share
      */
     function pricePerShare() public view returns (uint) {
-        return totalSupply() <= 0 ? _precision() : (balance() * _precision() / totalSupply());
+        return totalSupply() == 0 ? _precision() : (balance() * _precision() / totalSupply());
     }
 
     function _precision() internal view returns (uint) { return 10 ** decimals(); }

@@ -74,7 +74,7 @@ contract DebtSettler is ReentrancyGuard {
             _totalDebt += _debts[i];
         }
 
-        if (_totalDebt <= 0) return;
+        if (_totalDebt == 0) return;
         if (_amount > _totalDebt) _amount = _totalDebt;
 
         for (uint i = 0; i < _length; i++) {
@@ -119,7 +119,7 @@ contract DebtSettler is ReentrancyGuard {
         for (uint i = 0; i < _records.length(); i++) {
             (address _borrower, uint _debt) = _records.at(i);
 
-            if (_debt <= 0) _toRemove[_toRemoveLength++] = _borrower;
+            if (_debt == 0) _toRemove[_toRemoveLength++] = _borrower;
         }
 
         for (uint i = 0; i < _toRemoveLength; i++) {
@@ -162,7 +162,7 @@ contract DebtSettler is ReentrancyGuard {
     function rescueFounds() external nonReentrant {
         uint _balance = asset.balanceOf(address(this));
 
-        if (_borrowers.length() <= 0 && _balance > 0) {
+        if (_borrowers.length() == 0 && _balance > 0) {
             asset.safeTransfer(pool.treasury(), _balance);
         }
     }
