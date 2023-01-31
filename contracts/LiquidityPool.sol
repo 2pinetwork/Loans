@@ -71,7 +71,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     error AlreadyInitialized();
 
     /**
-     * @dev Throws when due date is already passed.
+     * @dev Throws when due date is too soon.
      */
     error DueDateTooSoon();
 
