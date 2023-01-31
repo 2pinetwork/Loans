@@ -65,7 +65,7 @@ describe('Collateral Pool', async function () {
       const { pool, alice } = await loadFixture(deploy)
 
       await expect(pool.connect(alice).togglePause()).to.be.revertedWithCustomError(
-        pool, 'NotAdmin'
+        pool, 'NotPauser'
       )
     })
   })
