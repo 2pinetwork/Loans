@@ -745,7 +745,12 @@ contract LiquidityPool is Pausable, PiAdmin {
 
         // Interest is only calculated over the original borrow amount
         // Use all the operations here to prevent _losing_ precision
-        return _bal * (interestRate + piFee) * _timeDiff / SECONDS_PER_YEAR / PRECISION;
+        uint _diff = _bal * (interestRate + piFee) * _timeDiff / SECONDS_PER_YEAR / PRECISION;
+
+        // Round up if there is a remainder
+        if (_diff * SECONDS_PER_YEAR * PRECISION / (interestRate + piFee) / _bal < _timeDiff) _diff++;
+
+        return _diff;
     }
 
     function _checkBorrowAmount(uint _amount) internal view {
