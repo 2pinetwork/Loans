@@ -280,6 +280,64 @@ describe('Controller', async function () {
     })
   })
 
+  describe('setMinStrategyDepositAmount', async function () {
+    it('should work', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      await expect(
+        cToken.setMinStrategyDepositAmount(1)
+      ).to.emit(cToken, 'NewMinStrategyDepositAmount').withArgs(1e18 + '', 1)
+    })
+
+    it('should not work if not owner', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken } = fixtures
+
+      await expect(
+        cToken.connect(bob).setMinStrategyDepositAmount(1)
+      ).to.be.revertedWith('Ownable: caller is not the owner')
+    })
+
+    it('should revert if same value', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { cToken } = fixtures
+
+      await expect(
+        cToken.setMinStrategyDepositAmount(1e18 + '')
+      ).to.be.revertedWithCustomError(cToken, 'SameValue')
+    })
+
+    it('should not deposit on strategy when lower than min strategy deposit amount', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cPool, cToken, token, Strat } = fixtures
+
+      const strategy = await Strat.deploy(cToken.asset())
+
+      await cToken.setStrategy(strategy.address)
+
+      await token.mint(bob.address, 1)
+      await token.connect(bob).approve(cPool.address, 1)
+
+      expect(await token.balanceOf(cToken.address)).to.be.equal(0)
+      await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.emit(cPool, 'Deposit')
+
+      // Since we are below the min strategy deposit amount, the deposit should be kept in controller
+      expect(await token.balanceOf(cToken.address)).to.be.equal(1)
+
+      await token.mint(bob.address, 2e18 + '')
+      await token.connect(bob).approve(cPool.address, 2e18 + '')
+
+      await expect(cPool.connect(bob)['deposit(uint256)'](2e18 + '')).to.emit(cPool, 'Deposit')
+      // Since we exceed the min strategy deposit amount, all the deposit should be sent to strategy
+      expect(await token.balanceOf(cToken.address)).to.be.equal(0)
+    })
+  })
+
   describe('Strategy', async function () {
     it('setStrategy should work', async function () {
       const { cToken, Strat } = await loadFixture(deploy)
