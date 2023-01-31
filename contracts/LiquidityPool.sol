@@ -39,6 +39,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     uint public constant PRECISION = 1e18;
     uint public constant SECONDS_PER_YEAR = 365 days;
     uint public constant MAX_RATE = 1e18; // Max rate 100% JIC
+    uint public constant MIN_DURATION = 5 days;
 
     // 1%
     uint public interestRate = 0.01e18;
@@ -70,9 +71,9 @@ contract LiquidityPool is Pausable, PiAdmin {
     error AlreadyInitialized();
 
     /**
-     * @dev Throws when due date is already passed.
+     * @dev Throws when due date is too soon.
      */
-    error DueDateInThePast();
+    error DueDateTooSoon();
 
     /**
      * @dev Throws when the pool is not active because it has been expired.
@@ -108,7 +109,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      * @param _dueDate The timestamp of the due date until this pool will be active.
      */
     constructor(IPiGlobal _piGlobal, IERC20Metadata _asset, uint _dueDate) {
-        if (_dueDate <= block.timestamp) revert DueDateInThePast();
+        if (_dueDate <= block.timestamp + MIN_DURATION) revert DueDateTooSoon();
         if (address(_piGlobal) == address(0)) revert Errors.ZeroAddress();
         if (_piGlobal.oracle() == address(0)) revert Errors.ZeroAddress();
 

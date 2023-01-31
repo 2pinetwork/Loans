@@ -122,7 +122,7 @@ describe('Controller', async function () {
 
       const token2      = await (await ethers.getContractFactory('ERC20Mintable')).deploy('t2', 't2')
       const tokenFeed   = await TokenFeed.deploy(3e8)
-      const dueDate     = (await ethers.provider.getBlock()).timestamp + 20
+      const dueDate     = (await ethers.provider.getBlock()).timestamp + (6 * 24 * 60 * 60) // 6 days
       const lPool       = await LPool.deploy(piGlobal.address, token2.address, dueDate)
       const debtSettler = await DebtSettler.deploy(lPool.address)
 

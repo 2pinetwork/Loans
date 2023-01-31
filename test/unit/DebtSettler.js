@@ -112,14 +112,15 @@ describe('Debt settler', async function () {
     })
 
     it('Should fail when liquidity pool is expired', async function () {
-      const { piGlobal, token, DebtSettler, LPool } = await loadFixture(deploy)
+      const { piGlobal, token, DebtSettler, LPool, lPool } = await loadFixture(deploy)
 
-      const dueDate = (await ethers.provider.getBlock()).timestamp + 10
-      const lPool   = await LPool.deploy(piGlobal.address, token.address, dueDate)
+      const minDuration = await lPool.MIN_DURATION()
+      const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 10)
+      const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
-      mine(100)
+      mine(minDuration.add(10))
 
-      await expect(DebtSettler.deploy(lPool.address)).to.be.revertedWithCustomError(
+      await expect(DebtSettler.deploy(_lPool.address)).to.be.revertedWithCustomError(
         DebtSettler,
         'InvalidPool'
       )
