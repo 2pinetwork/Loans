@@ -32,6 +32,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     uint constant public RATIO_PRECISION = 10000;
     uint constant public MAX_WITHDRAW_FEE = 100; // 1%
     uint public withdrawFee = 0; // 0%
+    uint public minStrategyDepositAmount = 1e18;
 
     // Deposit limit a contract can hold
     // This value should be in the same decimal representation as asset
@@ -111,6 +112,14 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @param newFee The new fee
      */
     event NewWithdrawFee(uint oldFee, uint newFee);
+
+    /**
+     * @dev Emitted when a new min strategy deposit amount is set
+     *
+     * @param oldAmount The old amount
+     * @param newAmount The new amount
+     */
+    event NewMinStrategyDepositAmount(uint oldAmount, uint newAmount);
 
     /**
      * @dev Initializes the contract
@@ -225,6 +234,19 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         emit NewUserDepositLimit(userDepositLimit, _amount);
 
         userDepositLimit = _amount;
+    }
+
+    /**
+     * @dev Sets the minimum amount of assets to deposit in the strategy
+     *
+     * @param _amount The amount to set
+     */
+    function setMinStrategyDepositAmount(uint _amount) external onlyOwner nonReentrant {
+        if (_amount == minStrategyDepositAmount) revert Errors.SameValue();
+
+        emit NewMinStrategyDepositAmount(minStrategyDepositAmount, _amount);
+
+        minStrategyDepositAmount = _amount;
     }
 
     /**
@@ -428,7 +450,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         uint _amount = assetBalance();
 
-        if (_amount > 0) {
+        if (_amount >= minStrategyDepositAmount) {
             asset.safeTransfer(address(strategy), _amount);
 
             strategy.deposit();
