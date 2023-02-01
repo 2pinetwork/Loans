@@ -330,13 +330,15 @@ describe('Controller', async function () {
       expect(await token.balanceOf(cToken.address)).to.be.equal(1)
       expect(await token.balanceOf(strategy.address)).to.be.equal(0)
 
-      await token.mint(bob.address, 2e18 + '')
-      await token.connect(bob).approve(cPool.address, 2e18 + '')
+      const amount = ethers.utils.parseEther('2')
 
-      await expect(cPool.connect(bob)['deposit(uint256)'](2e18 + '')).to.emit(cPool, 'Deposit')
+      await token.mint(bob.address, amount)
+      await token.connect(bob).approve(cPool.address, amount)
+
+      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
       // Since we exceed the min strategy deposit amount, all the deposit should be sent to strategy
       expect(await token.balanceOf(cToken.address)).to.be.equal(0)
-      expect(await token.balanceOf(strategy.address)).to.be.equal(2e18 + 1 + '')      
+      expect(await token.balanceOf(strategy.address)).to.be.equal(amount.add(1))
     })
   })
 
