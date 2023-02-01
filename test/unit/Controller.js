@@ -328,6 +328,7 @@ describe('Controller', async function () {
 
       // Since we are below the min strategy deposit amount, the deposit should be kept in controller
       expect(await token.balanceOf(cToken.address)).to.be.equal(1)
+      expect(await token.balanceOf(strategy.address)).to.be.equal(0)
 
       await token.mint(bob.address, 2e18 + '')
       await token.connect(bob).approve(cPool.address, 2e18 + '')
@@ -335,6 +336,7 @@ describe('Controller', async function () {
       await expect(cPool.connect(bob)['deposit(uint256)'](2e18 + '')).to.emit(cPool, 'Deposit')
       // Since we exceed the min strategy deposit amount, all the deposit should be sent to strategy
       expect(await token.balanceOf(cToken.address)).to.be.equal(0)
+      expect(await token.balanceOf(strategy.address)).to.be.equal(2e18 + 1 + '')      
     })
   })
 
