@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {DToken}  from "./DToken.sol";
 import {LToken}  from "./LToken.sol";
@@ -746,7 +747,7 @@ contract LiquidityPool is Pausable, PiAdmin {
 
         // Interest is only calculated over the original borrow amount
         // Use all the operations here to prevent _losing_ precision
-        return _bal * (interestRate + piFee) * _timeDiff / SECONDS_PER_YEAR / PRECISION;
+        return Math.mulDiv(_bal * (interestRate + piFee), _timeDiff, SECONDS_PER_YEAR * PRECISION, Math.Rounding.Up);
     }
 
     function _checkBorrowAmount(uint _amount) internal view {
