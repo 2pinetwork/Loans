@@ -146,10 +146,12 @@ describe('Liquidation', async function () {
     await token.connect(alice).approve(lPool.address, 100e18 + '')
     await cPool.connect(alice).liquidationCall(bob.address, lPool.address, debt)
 
+    const bonus = debt.div(100).add(debt.mod(100) > 0 ? 1 : 0) // 1% of bonus rounded up
+
     expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
-    expect(await token.balanceOf(alice.address)).to.be.equal(debt.div(100)) // 1% of bonus
+    expect(await token.balanceOf(alice.address)).to.be.equal(bonus) // 1% of bonus
     expect(await cToken.balanceOf(bob.address)).to.be.equal(
-      balance.sub(debt.add(debt.div(100))) // 1% of bonus
+      balance.sub(debt.add(bonus)) // 1% of bonus
     )
   })
 
@@ -205,8 +207,9 @@ describe('Liquidation', async function () {
     await cPool.connect(alice).liquidationCall(bob.address, lPool.address, debt)
 
     // with 1% bonus in collateral amount
-    const debtInCollateral = debt.mul(3).div(13)
-    const liquidableCollateral = debtInCollateral.add(debtInCollateral.div(100))
+    const debtInCollateral     = debt.mul(3).div(13)
+    const bonus                = debtInCollateral.div(100).add(debtInCollateral.mod(100) > 0 ? 1 : 0) // 1% of bonus rounded up
+    const liquidableCollateral = debtInCollateral.add(bonus)
 
     expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
     expect(await token.balanceOf(alice.address)).to.be.equal(liquidableCollateral) // 1% of bonus in collateral amount
@@ -378,5 +381,63 @@ describe('Liquidation', async function () {
     await expect(
       cPool.connect(alice).liquidationCall(bob.address, lPool.address, 1e18 + '')
     ).to.emit(cPool, 'LiquidationCall')
+  })
+
+  it('Not accumulates unprofitable debt', async function () {
+    const fixtures = await loadFixture(deploy)
+    const {
+      alice,
+      bob,
+      cPool,
+      cToken,
+      piGlobal,
+      token,
+      lPool,
+      LPool,
+      DebtSettler,
+    } = fixtures
+
+    const minDuration = await lPool.MIN_DURATION()
+    const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 20)
+    const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
+    const debtSettler = await DebtSettler.deploy(_lPool.address)
+
+    await Promise.all([
+      _lPool.setDebtSettler(debtSettler.address),
+      token.mint(_lPool.address, 10e18 + ''),
+      piGlobal.addLiquidityPool(_lPool.address),
+      setupCollateral({...fixtures, lPool: _lPool}),
+    ])
+
+    // Add liquidity & Repayment
+    await token.mint(_lPool.address, 10e18 + '')
+    await token.mint(bob.address, 10e18 + '')
+
+    const balance       = await cToken.balanceOf(bob.address)
+    const depositAmount = ethers.utils.parseUnits('99', 1)
+
+    // Skip low HF & LF...
+    await _lPool.connect(bob).borrow(depositAmount.div(10))
+    await mine(minDuration.add(20))
+
+    const debt = await _lPool['debt(address)'](bob.address)
+
+    // Alice doesn't have any tokens before liquidation call
+    expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+    // Approve for repay
+    await token.connect(alice).approve(_lPool.address, 100e18 + '')
+    await cPool.connect(alice).liquidationCall(bob.address, _lPool.address, debt)
+
+    // Alice should have _some_ tokens
+    expect(await token.balanceOf(alice.address)).to.be.greaterThan(0)
+
+    const bonus = debt.div(100).add(debt.mod(100) > 0 ? 1 : 0) // 1% of bonus rounded up
+
+    expect(await _lPool['debt(address)'](bob.address)).to.be.equal(0)
+    expect(await token.balanceOf(alice.address)).to.be.equal(bonus) // 1% of bonus
+    expect(await cToken.balanceOf(bob.address)).to.be.equal(
+      balance.sub(debt.add(bonus)) // 1% of bonus
+    )
   })
 })
