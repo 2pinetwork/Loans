@@ -2,6 +2,7 @@
 pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "./PiAdmin.sol";
 import "../interfaces/IChainLink.sol";
@@ -272,7 +273,7 @@ contract Oracle is PiAdmin {
          // collateral tokens via the prices
          _liquidableCollateral = _debtToBePaid * _lPrice / _cPrice;
          // have to add the liquidation bonus %
-         _liquidableCollateral += _liquidableCollateral * liquidationBonus / BASE_PRECISION;
+         _liquidableCollateral += Math.mulDiv(_liquidableCollateral, liquidationBonus, BASE_PRECISION, Math.Rounding.Up);
     }
 
     /**
