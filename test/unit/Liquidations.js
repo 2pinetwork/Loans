@@ -60,6 +60,7 @@ describe('Liquidation', async function () {
       lPool.setDebtSettler(debtSettler.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
+      lPool.togglePause(),
     ])
 
     return {
@@ -123,6 +124,7 @@ describe('Liquidation', async function () {
       lPool.setDebtSettler(debtSettler.address),
       token.mint(lPool.address, 10e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
+      lPool.togglePause(),
       setupCollateral({...fixtures, lPool}),
     ])
     // Add liquidity & Repayment
@@ -183,6 +185,7 @@ describe('Liquidation', async function () {
       piGlobal.addLiquidityPool(lPool.address),
       token2.mint(alice.address, 100e18 + ''),
       token2.mint(lPool.address, 100e18 + ''),
+      lPool.togglePause(),
       setupCollateral({...fixtures, lPool}),
     ])
 
@@ -248,6 +251,7 @@ describe('Liquidation', async function () {
       piGlobal.addLiquidityPool(lPool.address),
       token2.mint(alice.address, 100e18 + ''),
       token2.mint(lPool.address, 100e18 + ''),
+      lPool.togglePause(),
       setupCollateral({...fixtures, lPool}),
     ])
 
@@ -328,6 +332,7 @@ describe('Liquidation', async function () {
       token2.connect(alice).approve(lPool.address, 100e18 + ''),
       token2.mint(alice.address, 100e18 + ''),
       token2.mint(lPool.address, 100e18 + ''),
+      lPool.togglePause(),
       setupCollateral({...fixtures, lPool}),
       // prevent debt growth block by block
       // lPool.setInterestRate(0),
@@ -406,6 +411,7 @@ describe('Liquidation', async function () {
       _lPool.setDebtSettler(debtSettler.address),
       token.mint(_lPool.address, 10e18 + ''),
       piGlobal.addLiquidityPool(_lPool.address),
+      _lPool.togglePause(),
       setupCollateral({...fixtures, lPool: _lPool}),
     ])
 

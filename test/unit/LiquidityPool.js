@@ -85,6 +85,7 @@ describe('Liquidity Pool', async function () {
       lPool.setTreasury(treasury.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
+      lPool.togglePause(),
     ])
 
     return {
@@ -122,6 +123,7 @@ describe('Liquidity Pool', async function () {
       expect(lPool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
 
+      expect(await lPool.paused()).to.be.equal(true)
       expect(await lToken.name()).to.be.equal('2pi Liquidity t')
       expect(await lToken.symbol()).to.be.equal('2pi-L-t')
       expect(await lToken.decimals()).to.be.equal(18)
@@ -702,6 +704,7 @@ describe('Liquidity Pool', async function () {
       const dueDate     = minDuration.add((await ethers.provider.getBlock()).timestamp + 10)
       const _lPool      = await LPool.deploy(piGlobal.address, token.address, dueDate)
 
+      await _lPool.togglePause()
       await mine(minDuration.add(10))
 
       await expect(_lPool.borrow(1)).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
@@ -777,6 +780,7 @@ describe('Liquidity Pool', async function () {
         token.mint(_lPool.address, 10e18 + ''),
         piGlobal.addLiquidityPool(_lPool.address),
         setupCollateral({...fixtures, lPool: _lPool}),
+        _lPool.togglePause(),
       ])
 
       // Add tokens for Repayment
