@@ -9,7 +9,7 @@ describe('LToken', async function () {
     const LToken  = await ethers.getContractFactory('LToken')
     const Token   = await ethers.getContractFactory('ERC20')
     const token   = await Token.deploy('t', 't')
-    const lToken  = await LToken.deploy(token.address)
+    const lToken  = await LToken.deploy(token.address, 0)
 
     return { bob, lToken, token, LToken, Token }
   }
@@ -17,11 +17,11 @@ describe('LToken', async function () {
   describe('Deployment', async function () {
     it('Should work', async function () {
       const { token, LToken } = await loadFixture(deploy)
-      const lToken = await LToken.deploy(token.address)
+      const lToken            = await LToken.deploy(token.address, 0)
 
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
-      expect(await lToken.name()).to.be.equal('2pi Liquidity t')
-      expect(await lToken.symbol()).to.be.equal('2pi-L-t')
+      expect(await lToken.name()).to.be.equal('2pi Liquidity t - 0')
+      expect(await lToken.symbol()).to.be.equal('2pi-L-t-0')
       expect(await lToken.decimals()).to.be.equal(18)
     })
   })

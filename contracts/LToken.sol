@@ -4,6 +4,7 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title LToken
@@ -19,9 +20,9 @@ contract LToken is ERC20, ReentrancyGuard {
      *
      * @param _asset The asset that the LToken represents.
      */
-    constructor(IERC20Metadata _asset) ERC20(
-        string(abi.encodePacked("2pi Liquidity ", _asset.symbol())),
-        string(abi.encodePacked("2pi-L-", _asset.symbol()))
+    constructor(IERC20Metadata _asset, uint _dueDate) ERC20(
+        string(abi.encodePacked("2pi Liquidity ", _asset.symbol(), " - ", Strings.toString(_dueDate))),
+        string(abi.encodePacked("2pi-L-", _asset.symbol(), "-", Strings.toString(_dueDate)))
     ) {
         asset = _asset;
         pool = msg.sender;
