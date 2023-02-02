@@ -31,8 +31,20 @@ contract DebtSettler is ReentrancyGuard {
     // Keep track of borrowers
     EnumerableSet.AddressSet internal _borrowers;
 
+    /**
+     * @dev Throws if the liquidity pool is expired.
+     */
     error InvalidPool();
+
+    /**
+     * @dev Throws if the sender is not the liquidity pool.
+     */
     error UnknownSender();
+
+    /**
+     * @dev Throws if the given index is invalid when building the list for repayments.
+     */
+    error InvalidIndex();
 
     /**
      * @dev Initialize the contract.
@@ -59,16 +71,22 @@ contract DebtSettler is ReentrancyGuard {
      * @dev Build a list of borrowers and the amount of credit they have.
      *
      * @param _amount The amount of credit to distribute between borrowers.
+     * @param _from The index of the first borrower to include.
+     * @param _to The index of the last borrower to include.
      */
-    function build(uint _amount) external onlyPool nonReentrant {
+    function build(uint _amount, uint _from, uint _to) external onlyPool nonReentrant {
         uint _totalDebt = 0;
         uint _length = _borrowers.length();
+
+        if (_length == 0) return;
+        if (_to > _length - 1) _to = _length - 1;
+        if (_from > _to) revert InvalidIndex();
 
         // Prevent double call to _debt()
         uint[] memory _debts = new uint[](_length);
 
         // Get the total debt for all borrowers
-        for (uint i = 0; i < _length; i++) {
+        for (uint i = _from; i <= _to; i++) {
             _debts[i] = pool.debt(_borrowers.at(i));
 
             _totalDebt += _debts[i];
@@ -77,7 +95,7 @@ contract DebtSettler is ReentrancyGuard {
         if (_totalDebt == 0) return;
         if (_amount > _totalDebt) _amount = _totalDebt;
 
-        for (uint i = 0; i < _length; i++) {
+        for (uint i = _from; i <= _to; i++) {
             address _borrower = _borrowers.at(i);
             uint _credit = _amount * _debts[i] / _totalDebt;
             (, uint _currentCredit) = _records.tryGet(_borrower);

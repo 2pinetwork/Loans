@@ -596,10 +596,12 @@ contract LiquidityPool is Pausable, PiAdmin {
      * should be called to actually pay the debt.
      *
      * @param _amount The amount of asset to repay.
+     * @param _from The index of the first borrower to be repaid.
+     * @param _to The index of the last borrower to be repaid.
      */
-    function buildMassiveRepay(uint _amount) external nonReentrant {
+    function buildMassiveRepay(uint _amount, uint _from, uint _to) external nonReentrant {
         asset.safeTransferFrom(msg.sender, address(debtSettler), _amount);
-        debtSettler.build(_amount);
+        debtSettler.build(_amount, _from, _to);
     }
 
     function _repay(address _payer, address _account, uint _amount) internal {

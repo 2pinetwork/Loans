@@ -39,9 +39,9 @@ const setupCollateral = async function (fixtures) {
 const getInterest = async function (lPool, base, seconds) {
   // 1% piFee
   // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
-  const [rate, piFee] = await Promise.all([lPool.interestRate(), lPool.piFee()]);
+  const [rate, piFee]    = await Promise.all([lPool.interestRate(), lPool.piFee()]);
   const SECONDS_PER_YEAR = ethers.utils.parseUnits('31536000', 0)
-  const PRECISION = ethers.utils.parseUnits('1', 18)
+  const PRECISION        = ethers.utils.parseUnits('1', 18)
 
   return base.mul(rate.add(piFee)).mul(seconds).div(SECONDS_PER_YEAR).div(PRECISION)
 }
@@ -137,7 +137,7 @@ describe('Debt settler', async function () {
     it('Should fail when not called by the liquidity pool', async function () {
       const { debtSettler } = await loadFixture(deploy)
 
-      await expect(debtSettler.build(1e18 + '')).to.be.revertedWithCustomError(
+      await expect(debtSettler.build(1e18 + '', 0, 100)).to.be.revertedWithCustomError(
         debtSettler,
         'UnknownSender'
       )
@@ -160,6 +160,22 @@ describe('Debt settler', async function () {
         'UnknownSender'
       )
     })
+
+    it('Should fail when indexes are out of bounds', async function () {
+      const fixtures                           = await loadFixture(deploy)
+      const { bob, token, debtSettler, lPool } = fixtures
+      const impersonatedPool                   = await impersonateContract(lPool.address)
+
+      await setupCollateral(fixtures)
+
+      await token.mint(lPool.address, 40e18 + '')
+      await lPool.connect(bob).borrow(ethers.utils.parseUnits('5', 18))
+
+      await expect(debtSettler.connect(impersonatedPool).build('100', 10, 11)).to.be.revertedWithCustomError(
+        debtSettler,
+        'InvalidIndex'
+      )
+    })
   })
 
   describe('Build and pay', async function () {
@@ -172,7 +188,7 @@ describe('Debt settler', async function () {
       const debtSettler      = await DebtSettler.deploy(lPool.address)
       const impersonatedPool = await impersonateContract(lPool.address)
 
-      await expect(debtSettler.connect(impersonatedPool).build('100')).not.to.be.reverted
+      await expect(debtSettler.connect(impersonatedPool).build('100', 0, 1)).not.to.be.reverted
     })
 
     it('Should work for debt settling when amount >= debt', async function () {
@@ -225,7 +241,7 @@ describe('Debt settler', async function () {
       const interestAmount = await getInterest(lPool, depositAmount, seconds)
       const repayAmount    = depositAmount.add(interestAmount).mul(3)
 
-      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount, 0, 1)
       await debtSettler.connect(treasury).pay()
 
       // Since debt is calculated before payment, next block we have _some_
@@ -302,7 +318,7 @@ describe('Debt settler', async function () {
       const aliceDebt   = await lPool['debt(address)'](alice.address)
       const totalDebt   = bobDebt.add(aliceDebt)
 
-      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount, 0, 1)
       await debtSettler.connect(treasury).pay()
 
       const bobDebtAfter   = await lPool['debt(address)'](bob.address)
@@ -374,7 +390,7 @@ describe('Debt settler', async function () {
       const bobDebt     = await lPool['debt(address)'](bob.address)
       const aliceDebt   = await lPool['debt(address)'](alice.address)
 
-      await lPool.connect(treasury).buildMassiveRepay(repayAmount)
+      await lPool.connect(treasury).buildMassiveRepay(repayAmount, 0, 1)
       await debtSettler.connect(treasury).pay({ gasLimit: 200000 })
 
       const bobDebtAfter   = await lPool['debt(address)'](bob.address)
