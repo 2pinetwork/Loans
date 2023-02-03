@@ -264,9 +264,18 @@ describe('Oracle', async function () {
     })
 
     it('Should revert for price zero', async function () {
-      const { oracle, token, tokenFeed, alice } = await loadFixture(deploy)
+      const { cPool, lPool, oracle, token, tokenFeed, alice } = await loadFixture(deploy)
+      const amount = ethers.utils.parseUnits('2', 18)
 
       await oracle.addPriceOracle(token.address, tokenFeed.address)
+
+      await token.mint(alice.address, amount)
+      await token.connect(alice).approve(cPool.address, amount)
+
+      expect(await cPool.connect(alice)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+
+      await token.mint(lPool.address, 10)
+      await lPool.connect(alice).borrow(10)
 
       await tokenFeed.setPrice(0)
 
