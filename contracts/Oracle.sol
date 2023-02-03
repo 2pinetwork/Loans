@@ -329,11 +329,13 @@ contract Oracle is PiAdmin {
 
         for (uint i = 0; i < _lPools.length; i++) {
             ILPool _pool = ILPool(_lPools[i]);
+            uint _debt   = _pool.debt(_account);
+
+            if (_debt == 0) continue;
+
             uint _price = _normalizedPrice(_pool.asset());
 
             if (_price == 0) revert InvalidFeed(_pool.asset());
-
-            uint _debt  = _pool.debt(_account);
 
             _amount += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _debt) * _price / BASE_PRECISION;
         }
@@ -343,14 +345,14 @@ contract Oracle is PiAdmin {
         address[] memory _cPools = piGlobal.collateralPools();
 
         for (uint i = 0; i < _cPools.length; i++) {
-            ICPool _pool = ICPool(_cPools[i]);
-            uint _price = _normalizedPrice(_pool.asset());
-
-            if (_price == 0) revert InvalidFeed(_pool.asset());
-
+            ICPool _pool    = ICPool(_cPools[i]);
             uint _available = _pool.availableCollateral(_account);
 
             if (_available == 0) continue;
+
+            uint _price = _normalizedPrice(_pool.asset());
+
+            if (_price == 0) revert InvalidFeed(_pool.asset());
 
             // Collateral in USD in 18 decimals precision
             _availableInUSD += _fixPrecision(_pool.decimals(), BASE_DECIMALS, _available) * _price / BASE_PRECISION;
