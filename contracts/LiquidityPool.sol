@@ -118,7 +118,7 @@ contract LiquidityPool is Pausable, PiAdmin {
         dueDate = _dueDate;
 
         // Liquidity token
-        lToken = new LToken(asset);
+        lToken = new LToken(asset, _dueDate);
         // Debt token
         dToken = new DToken(asset);
         // Interest token

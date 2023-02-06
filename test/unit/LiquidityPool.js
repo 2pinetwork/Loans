@@ -124,8 +124,8 @@ describe('Liquidity Pool', async function () {
       expect(lToken.address).to.not.be.equal(ZERO_ADDRESS)
 
       expect(await lPool.paused()).to.be.equal(true)
-      expect(await lToken.name()).to.be.equal('2pi Liquidity t')
-      expect(await lToken.symbol()).to.be.equal('2pi-L-t')
+      expect(await lToken.name()).to.be.equal(`2pi Liquidity t - ${dueDate}`)
+      expect(await lToken.symbol()).to.be.equal(`2pi-L-t-${dueDate}`)
       expect(await lToken.decimals()).to.be.equal(18)
     })
 
