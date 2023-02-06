@@ -191,6 +191,18 @@ describe('Liquidity Pool', async function () {
       ).to.be.revertedWithCustomError(lPool, 'ZeroShares')
     })
 
+    it('Should revert when deposit is less than min', async function() {
+      const { bob, lPool, token } = await loadFixture(deploy)
+      const minSupply             = await lPool.MINIMUM_SUPPLY()
+
+      token.mint(bob.address, minSupply.sub(1))
+      token.connect(bob).approve(lPool.address, minSupply.sub(1))
+
+      await expect(
+        lPool.connect(bob)['deposit(uint256)'](minSupply.sub(1))
+      ).to.be.revertedWithCustomError(lPool, 'LowSupply')
+    })
+
     it('Should revert when withdraw zero shares', async function () {
       const { bob, lPool } = await loadFixture(deploy)
 

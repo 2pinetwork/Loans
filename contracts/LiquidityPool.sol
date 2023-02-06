@@ -41,6 +41,7 @@ contract LiquidityPool is Pausable, PiAdmin {
     uint public constant SECONDS_PER_YEAR = 365 days;
     uint public constant MAX_RATE = 1e18; // Max rate 100% JIC
     uint public constant MIN_DURATION = 5 days;
+    uint public constant MINIMUM_SUPPLY = 10 ** 3;
 
     // 1%
     uint public interestRate = 0.01e18;
@@ -90,6 +91,11 @@ contract LiquidityPool is Pausable, PiAdmin {
      * @dev Throws when asked to borrow more than the pool can provide.
      */
     error InsufficientLiquidity();
+
+    /**
+     * @dev Throws when supply is too low.
+     */
+    error LowSupply();
 
     /**
      * @dev Throws when trying to pay a debt that does not exist.
@@ -458,6 +464,8 @@ contract LiquidityPool is Pausable, PiAdmin {
         if (_shares == 0) revert Errors.ZeroShares();
 
         lToken.mint(_onBehalfOf, _shares);
+
+        if (lToken.totalSupply() < MINIMUM_SUPPLY) revert LowSupply();
 
         emit Deposit(msg.sender, _onBehalfOf, _amount, _shares);
     }
