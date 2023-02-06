@@ -132,6 +132,7 @@ describe('Controller', async function () {
         piGlobal.addLiquidityPool(lPool.address),
         token2.mint(alice.address, 100e18 + ''),
         token2.mint(lPool.address, 100e18 + ''),
+        lPool.togglePause(),
         setupCollateral({...fixtures, lPool}),
       ])
 
