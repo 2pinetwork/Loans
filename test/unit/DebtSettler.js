@@ -72,6 +72,7 @@ describe('Debt settler', async function () {
       lPool.setDebtSettler(debtSettler.address),
       lPool.setPiFee(0.02e18 + ''),
       piGlobal.addLiquidityPool(lPool.address),
+      lPool.togglePause(),
     ])
 
     return {

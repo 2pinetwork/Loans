@@ -126,6 +126,9 @@ contract LiquidityPool is Pausable, PiAdmin {
 
         treasury = _piGlobal.treasury();
         piGlobal = _piGlobal;
+
+        // Should be paused by default until the pool is properly configured
+        _pause();
     }
 
     /**
