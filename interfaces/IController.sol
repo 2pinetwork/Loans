@@ -13,6 +13,6 @@ interface IController {
     function convertToAssets(uint _shares) external view returns (uint);
     function totalSupply() external view returns (uint);
     function deposit(address _onBehalfOf, uint _amount) external returns (uint);
-    function withdraw(address _to, uint _shares) external returns (uint);
+    function withdraw(address _to, uint _shares) external returns (uint, uint);
     function withdrawForLiquidation(address _liquidated, uint _shares) external returns (uint);
 }

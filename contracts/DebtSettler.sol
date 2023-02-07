@@ -82,9 +82,8 @@ contract DebtSettler is ReentrancyGuard {
             uint _credit = _amount * _debts[i] / _totalDebt;
             (, uint _currentCredit) = _records.tryGet(_borrower);
 
-            _credit += _currentCredit; // we have to accumulate each time =)
-
-            _records.set(_borrower, _credit);
+            // we have to accumulate each time =)
+            _records.set(_borrower, _credit + _currentCredit);
         }
     }
 

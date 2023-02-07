@@ -25,6 +25,7 @@ describe('Oracle', async function () {
     const tokenFeed  = await TokenFeed.deploy(13e8)
 
     await Promise.all([
+      lPool.togglePause(),
       cPool.setController(cToken.address),
       piGlobal.addCollateralPool(cPool.address),
       piGlobal.addLiquidityPool(lPool.address),

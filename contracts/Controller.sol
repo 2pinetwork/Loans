@@ -283,8 +283,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      *
      * @param _senderUser The user account that is withdrawing
      * @param _shares The amount of shares to withdraw
+     *
+     * @return The amount of collateral withdrawn
+     * @return The amount of shares burned
      */
-    function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint) {
+    function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint, uint) {
         if (_shares == 0) revert Errors.ZeroShares();
         if (_withStrat()) strategy.beforeMovement();
 
@@ -310,14 +313,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         uint _shares = _expectedAmount * totalSupply() / balance();
 
-        return _withdraw(_senderUser, _shares, _expectedAmount, false);
+        (_withdrawn, ) = _withdraw(_senderUser, _shares, _expectedAmount, false);
     }
 
-    function _withdraw(address _senderUser, uint _shares, uint _amount, bool _withFee) internal returns (uint) {
+    function _withdraw(address _senderUser, uint _shares, uint _amount, bool _withFee) internal returns (uint, uint) {
         if (_amount == 0 || _shares == 0) revert Errors.ZeroAmount();
 
-        _burn(_senderUser, _shares);
-
+        uint _toTransfer = _amount;
         uint _balance = assetBalance();
 
         if (_balance < _amount) {
@@ -332,25 +334,30 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
             if (_withdrawn == 0) revert CouldNotWithdrawFromStrategy();
 
             _balance = assetBalance();
-            if (_balance < _amount) _amount = _balance;
+            if (_balance < _amount) _toTransfer = _balance;
         }
 
+        // In case the strategy returns less than the requested amount
+        if (_toTransfer < _amount) _shares = _toTransfer * _shares / _amount;
+
         if (_withFee) {
-            uint _withdrawalFee = _amount * withdrawFee / RATIO_PRECISION;
+            uint _withdrawalFee = _toTransfer * withdrawFee / RATIO_PRECISION;
 
             if (_withdrawalFee > 0) {
-                _amount -= _withdrawalFee;
+                _toTransfer -= _withdrawalFee;
 
                 asset.safeTransfer(treasury, _withdrawalFee);
                 emit WithdrawalFee(_withdrawalFee);
             }
         }
 
-        asset.safeTransfer(pool, _amount);
+        _burn(_senderUser, _shares);
+
+        asset.safeTransfer(pool, _toTransfer);
 
         _strategyDeposit();
 
-        return _amount;
+        return (_toTransfer, _shares);
     }
 
     /**
@@ -387,7 +394,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         // Save some gas
         uint _totalSupply = totalSupply();
 
-        return (_totalSupply <= 0) ? _amount : (_amount * _totalSupply) / balance();
+        return (_totalSupply == 0) ? _amount : (_amount * _totalSupply) / balance();
     }
 
     /**
@@ -401,7 +408,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         // Save some gas
         uint _totalSupply = totalSupply();
 
-        return (_totalSupply <= 0) ? _shares : (_shares * balance()) / _totalSupply;
+        return (_totalSupply == 0) ? _shares : (_shares * balance()) / _totalSupply;
     }
 
     /**

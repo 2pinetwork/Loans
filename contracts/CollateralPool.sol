@@ -330,7 +330,7 @@ contract CollateralPool is PiAdmin, Pausable {
     function _withdraw(uint _shares, address _to) internal returns (uint) {
         if (_shares == 0) revert Errors.ZeroShares();
 
-        uint _withdrawn = controller.withdraw(msg.sender, _shares);
+        (uint _withdrawn, uint _burnedShares) = controller.withdraw(msg.sender, _shares);
         if (_withdrawn == 0) revert NoFundsWithdrawn();
 
         asset.safeTransfer(_to, _withdrawn);
@@ -338,7 +338,7 @@ contract CollateralPool is PiAdmin, Pausable {
         // Can't withdraw with a HF lower than 1.0
         IOracle(piGlobal.oracle()).checkHealthy(msg.sender);
 
-        emit Withdraw(msg.sender, _to, _withdrawn, _shares);
+        emit Withdraw(msg.sender, _to, _withdrawn, _burnedShares);
 
         return _withdrawn;
     }
