@@ -483,8 +483,10 @@ describe('Debt settler', async function () {
     console.log(`\n[1] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
     console.log(`\n[2] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
-     buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-    console.log(`\n[3] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
 
+    // this one will run without paying
+     buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+    expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
+    console.log(`\n[3] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
   })
 })
