@@ -23,4 +23,6 @@ interface ILPool is IPool {
     function expired() external view returns (bool);
     function repayFor(address, uint) external;
     function treasury() external view returns (address);
+    function dToken() external view returns (address);
+    function iToken() external view returns (address);
 }

@@ -8,6 +8,9 @@ import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 import {ILPool} from "../interfaces/IPool.sol";
 
+import "hardhat/console.sol";
+
+import "./PiAdmin.sol";
 import "../libraries/Errors.sol";
 
 /**
@@ -18,7 +21,7 @@ import "../libraries/Errors.sol";
  * @dev This contract is used to settle debt when the protocol earns interest.
  * It contains the list of borrowers and the amount of credit they have.
  */
-contract DebtSettler is ReentrancyGuard {
+contract DebtSettler is PiAdmin {
     using SafeERC20 for IERC20Metadata;
     using EnumerableMap for EnumerableMap.AddressToUintMap;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -31,7 +34,16 @@ contract DebtSettler is ReentrancyGuard {
     // Keep track of borrowers
     EnumerableSet.AddressSet internal _borrowers;
 
+    bytes32 public constant HANDLER_ROLE = keccak256("HANDLER_ROLE");
+
+    uint internal _lastIndexBuilt;
+    uint internal _lastCredit;
+    uint internal _lastIndexPaid;
+
+    IERC20Metadata internal dToken ;
+    IERC20Metadata internal iToken ;
     error InvalidPool();
+    error StillBuilding();
     error UnknownSender();
 
     /**
@@ -45,6 +57,9 @@ contract DebtSettler is ReentrancyGuard {
 
         pool = _pool;
         asset = IERC20Metadata(_pool.asset());
+
+        dToken = IERC20Metadata(pool.dToken());
+        iToken = IERC20Metadata(pool.iToken());
     }
 
     /**
@@ -56,35 +71,55 @@ contract DebtSettler is ReentrancyGuard {
     }
 
     /**
-     * @dev Build a list of borrowers and the amount of credit they have.
-     *
-     * @param _amount The amount of credit to distribute between borrowers.
+     * @dev Modifier to restrict access to the handler.
      */
-    function build(uint _amount) external onlyPool nonReentrant {
-        uint _totalDebt = 0;
+    modifier onlyHandler() {
+        if (! hasRole(HANDLER_ROLE, msg.sender)) revert UnknownSender();
+        _;
+    }
+
+    /**
+     * @dev Build a list of borrowers
+     */
+    function build() external onlyHandler nonReentrant {
         uint _length = _borrowers.length();
 
-        // Prevent double call to _debt()
-        uint[] memory _debts = new uint[](_length);
+        if (_length == 0) return;
 
-        // Get the total debt for all borrowers
-        for (uint i = 0; i < _length; i++) {
-            _debts[i] = pool.debt(_borrowers.at(i));
-
-            _totalDebt += _debts[i];
-        }
+        uint _totalDebt = dToken.totalSupply() + iToken.totalSupply();
 
         if (_totalDebt == 0) return;
-        if (_amount > _totalDebt) _amount = _totalDebt;
 
-        for (uint i = 0; i < _length; i++) {
+        // will always use first the "last balance snapshot"
+        uint _amount = _lastCredit;
+        // If there's a new loop we save the current balance
+        if (_lastIndexBuilt == 0) _amount = _lastCredit = asset.balanceOf(address(this));
+
+        if (_amount == 0) return;
+        if (_amount > _totalDebt) _amount = _lastCredit =  _totalDebt;
+
+        uint i = _lastIndexBuilt == 0 ? 0 : (_lastIndexBuilt + 1);
+
+        console.log("amount, debt, i", _amount, _totalDebt, i);
+
+        for (i; i < _length; i++) {
             address _borrower = _borrowers.at(i);
-            uint _credit = _amount * _debts[i] / _totalDebt;
+            uint _credit = _amount * _debt(_borrower) / _totalDebt;
             (, uint _currentCredit) = _records.tryGet(_borrower);
 
             // we have to accumulate each time =)
             _records.set(_borrower, _credit + _currentCredit);
+
+            // each loop use aprox 80k of gas
+            if (gasleft() <= 100_000) {
+                _lastIndexBuilt = i;
+                // console.log("Salio por el gasLeft", _lastIndexBuilt);
+                return;
+            }
         }
+        console.log("termino bien", _lastIndexBuilt);
+
+        _lastIndexBuilt = 0; // ensure that if ends always starts from 0
     }
 
     /**
@@ -93,19 +128,36 @@ contract DebtSettler is ReentrancyGuard {
      * If for some reason it runs out of gas, it will stop on the last borrower that could be settled.
      */
     function pay() external nonReentrant {
-        asset.approve(address(pool), asset.balanceOf(address(this)));
+        // Ensure always pay after build is finished
+        if (_lastIndexBuilt > 0) revert StillBuilding();
 
-        for (uint i = 0; i < _records.length(); i++) {
-            (address _borrower, uint _debt) = _records.at(i);
+        asset.approve(address(pool), _lastCredit);
 
+        // keep going from last paid
+        uint i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
+
+        // just in case the records decrease in size before pay
+        if (i > _records.length()) i = _lastIndexPaid = 0;
+
+        for (i; i < _records.length(); i++) {
+            console.log("gasLimit: ", i, gasleft());
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
-            if (gasleft() <= 50_000) break;
+            (address _borrower, uint _credit) = _records.at(i);
 
-            if (_debt > 0) {
-                pool.repayFor(_borrower, _debt);
+            if (_credit > 0) {
+                pool.repayFor(_borrower, _credit);
                 _records.set(_borrower, 0);
             }
-        }
+
+            // each loop use aprox 40k of gas
+            if (gasleft() <= 60_000) {
+                console.log("Salio el pay por gasLimit", i);
+                _lastIndexPaid = i;
+                return;
+            }
+        } // for
+
+        _lastIndexPaid = 0; // ensure that if ends always starts from 0
     }
 
     /**
@@ -116,9 +168,9 @@ contract DebtSettler is ReentrancyGuard {
         uint _toRemoveLength = 0;
 
         for (uint i = 0; i < _records.length(); i++) {
-            (address _borrower, uint _debt) = _records.at(i);
+            (address _borrower, uint _credit) = _records.at(i);
 
-            if (_debt == 0) _toRemove[_toRemoveLength++] = _borrower;
+            if (_credit == 0) _toRemove[_toRemoveLength++] = _borrower;
         }
 
         for (uint i = 0; i < _toRemoveLength; i++) {
@@ -145,11 +197,11 @@ contract DebtSettler is ReentrancyGuard {
     }
 
     /**
-     * @dev Remove a borrower from the list.
+     * @dev Remove a borrower from the list.(reentrancy is called from repay
      *
      * @param _borrower The borrower address.
      */
-    function removeBorrower(address _borrower) external onlyPool nonReentrant {
+    function removeBorrower(address _borrower) external onlyPool {
         _borrowers.remove(_borrower);
     }
 
@@ -164,5 +216,9 @@ contract DebtSettler is ReentrancyGuard {
         if (_borrowers.length() == 0 && _balance > 0) {
             asset.safeTransfer(pool.treasury(), _balance);
         }
+    }
+
+    function _debt(address _borrower) internal view returns (uint) {
+        return dToken.balanceOf(_borrower) + iToken.balanceOf(_borrower);
     }
 }
