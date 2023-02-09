@@ -2,7 +2,13 @@ const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 const { anyValue }    = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
 
-const { deployOracle, impersonateContract, mine, ZERO_ADDRESS } = require('./helpers')
+const {
+  deployOracle,
+  getInterest,
+  impersonateContract,
+  mine,
+  ZERO_ADDRESS
+} = require('./helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee
@@ -10,23 +16,6 @@ const getPiFeeFor = async function (lPool, amount) {
   const [rate, piFee] = await Promise.all([lPool.interestRate(), lPool.piFee()]);
 
   return amount.mul(piFee).div(piFee.add(rate))
-}
-
-const getInterest = async function (lPool, base, seconds) {
-  // 1% piFee
-  // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
-  const [rate, piFee]    = await Promise.all([lPool.interestRate(), lPool.piFee()])
-  const SECONDS_PER_YEAR = ethers.utils.parseUnits('31536000', 0)
-  const PRECISION        = ethers.utils.parseUnits('1', 18)
-  const numerator        = base.mul(rate.add(piFee)).mul(seconds)
-  const denominator      = SECONDS_PER_YEAR.mul(PRECISION)
-
-  // Round up
-  if (numerator.mod(denominator).eq(0)) {
-    return numerator.div(denominator)
-  } else {
-    return numerator.div(denominator).add(1)
-  }
 }
 
 const setupCollateral = async function (fixtures) {

@@ -3,7 +3,7 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const {
   deployOracle,
-  impersonateContract,
+  getInterest,
   mine,
   ZERO_ADDRESS
 } = require('./helpers')
@@ -34,16 +34,6 @@ const setupCollateral = async function (fixtures) {
   await expect(cPool.setCollateralRatio(1.0e18 + '')).to.emit(cPool, 'NewCollateralRatio')
 
   expect(await token.balanceOf(bob.address)).to.be.equal(0)
-}
-
-const getInterest = async function (lPool, base, seconds) {
-  // 1% piFee
-  // 1% per year => amount * 0.02(%) * (seconds) / SECONDS_PER_YEAR
-  const [rate, piFee] = await Promise.all([lPool.interestRate(), lPool.piFee()]);
-  const SECONDS_PER_YEAR = ethers.utils.parseUnits('31536000', 0)
-  const PRECISION = ethers.utils.parseUnits('1', 18)
-
-  return base.mul(rate.add(piFee)).mul(seconds).div(SECONDS_PER_YEAR).div(PRECISION)
 }
 
 describe('Debt settler', async function () {
@@ -136,10 +126,10 @@ describe('Debt settler', async function () {
   })
 
   describe('Validations', async function () {
-    it('Should fail when not called by the liquidity pool', async function () {
-      const { debtSettler } = await loadFixture(deploy)
+    it('Should fail when not called by handler', async function () {
+      const { bob, debtSettler } = await loadFixture(deploy)
 
-      await expect(debtSettler.build(1e18 + '')).to.be.revertedWithCustomError(
+      await expect(debtSettler.connect(bob).build()).to.be.revertedWithCustomError(
         debtSettler,
         'UnknownSender'
       )
@@ -165,19 +155,6 @@ describe('Debt settler', async function () {
   })
 
   describe('Build and pay', async function () {
-    it('Should work even when liquidity pool is fresh', async function () {
-      const dueDate = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
-
-      const { piGlobal, token, treasury, DebtSettler, LPool } = await loadFixture(deploy)
-
-      const lPool            = await LPool.deploy(piGlobal.address, token.address, dueDate)
-      const debtSettler      = await DebtSettler.deploy(lPool.address)
-      const impersonatedPool = await impersonateContract(lPool.address)
-
-      await token.connect(treasury).transfer(debtSettler.address, 100)
-      await expect(debtSettler.connect(impersonatedPool).build()).not.to.be.reverted
-    })
-
     it('Should work for debt settling when amount >= debt', async function () {
       const fixtures = await loadFixture(deploy)
 
@@ -204,8 +181,8 @@ describe('Debt settler', async function () {
       await expect(cPool.connect(alice)['deposit(uint256)'](20e18 + '')).to.emit(cPool, 'Deposit')
 
       const depositAmount = ethers.utils.parseUnits('9.9', 18)
-
       const ts = (await hre.ethers.provider.getBlock()).timestamp
+
       await lPool.connect(bob).borrow(depositAmount)
       await lPool.connect(alice).borrow(depositAmount.mul(2))
 
@@ -222,27 +199,42 @@ describe('Debt settler', async function () {
       expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
 
       await token.mint(treasury.address, 40e18 + '')
-      await token.connect(treasury).approve(lPool.address, 100e18 + '')
+      await debtSettler.grantRole(await debtSettler.HANDLER_ROLE(), treasury.address)
 
       const seconds        = (await hre.ethers.provider.getBlock()).timestamp - ts
-      const interestAmount = await getInterest(lPool, depositAmount, seconds)
+      const interestAmount = await getInterest(lPool, depositAmount, seconds) // +1 second because of the transfer to settler
       const repayAmount    = depositAmount.add(interestAmount).mul(3)
 
-      await token.connect(treasury).transfer(debtSettler.address, repayAmount)
-      await debtSettler.connect(treasury).build()
-      await debtSettler.connect(treasury).pay()
+      await (await token.connect(treasury).transfer(debtSettler.address, repayAmount)).wait()
+      await (await debtSettler.connect(treasury).build()).wait()
+      await (await debtSettler.connect(treasury).pay()).wait()
 
       // Since debt is calculated before payment, next block we have _some_
-      let oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
+      const blocksFromDebt = 5
+      const oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(oneBlockInterestAmount)
+      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
+        await getInterest(lPool, depositAmount, blocksFromDebt + 1)
+      )
       // Alice has double amount deposited, hence twice the interest of bob
-      expect(await lPool['debt(address)'](alice.address)).to.be.equal(oneBlockInterestAmount.mul(2))
-
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
+        (await getInterest(lPool, depositAmount.mul(2), blocksFromDebt))
+      )
 
       // This should have no effect since we already paid the debt
       // and borrowers have been set to zero balance
-      await debtSettler.connect(treasury).pay()
+      await network.provider.send("evm_setAutomine", [false])
+      const block = (await ethers.provider.getBlock()).number
+
+      // Pay everything without mine the block
+      await token.connect(treasury).transfer(debtSettler.address, repayAmount.mul(20)), // pay everything
+      await debtSettler.connect(treasury).build(),
+      await debtSettler.connect(treasury).pay(),
+      await mine(1)
+
+      expect((await ethers.provider.getBlock()).number).to.be.equal(block + 1)
+
+      await network.provider.send("evm_setAutomine", [true])
 
       // This should be increased by one block since previous check
       // And a little bit more =)
@@ -251,9 +243,9 @@ describe('Debt settler', async function () {
       expect(await lPool['debt(address)'](alice.address)).to.be.greaterThan(oneBlockInterestAmount.mul(2))
 
       // Now we check that clean method works
-      expect(await debtSettler.recordsLength()).to.be.equal(2)
+      expect(await debtSettler.usersCreditLength()).to.be.equal(2)
       await debtSettler.clean()
-      expect(await debtSettler.recordsLength()).to.be.equal(0)
+      expect(await debtSettler.usersCreditLength()).to.be.equal(0)
     })
 
     it('Should work for debt settling when amount < debt', async function () {
@@ -298,10 +290,12 @@ describe('Debt settler', async function () {
       expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
       expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
 
-      await token.mint(treasury.address, 20e18 + '')
-      await token.connect(treasury).approve(lPool.address, 100e18 + '')
-
       const repayAmount = ethers.utils.parseUnits('20', 18)
+
+      await token.mint(treasury.address, repayAmount)
+      await token.connect(treasury).transfer(debtSettler.address, repayAmount)
+      await debtSettler.grantRole(await debtSettler.HANDLER_ROLE(), treasury.address)
+
       const bobDebt     = await lPool['debt(address)'](bob.address)
       const aliceDebt   = await lPool['debt(address)'](alice.address)
       const totalDebt   = bobDebt.add(aliceDebt)
@@ -371,14 +365,14 @@ describe('Debt settler', async function () {
       expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
       expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
 
-      await token.mint(treasury.address, 20e18 + '')
-      await token.connect(treasury).approve(lPool.address, 100e18 + '')
-
       const repayAmount = ethers.utils.parseUnits('20', 18)
+      await token.mint(treasury.address, 20e18 + '')
+      await token.connect(treasury).transfer(debtSettler.address, repayAmount)
+      await debtSettler.grantRole(await debtSettler.HANDLER_ROLE(), treasury.address)
+
       const bobDebt     = await lPool['debt(address)'](bob.address)
       const aliceDebt   = await lPool['debt(address)'](alice.address)
 
-      await token.connect(treasury).transfer(debtSettler.address, repayAmount)
       await debtSettler.connect(treasury).build()
       await debtSettler.connect(treasury).pay({ gasLimit: 200000 })
 
@@ -391,9 +385,9 @@ describe('Debt settler', async function () {
       expect(aliceDebtAfter).to.be.greaterThan(aliceDebt)
 
       // Clean should only remove bob
-      expect(await debtSettler.recordsLength()).to.be.equal(2)
+      expect(await debtSettler.usersCreditLength()).to.be.equal(2)
       await debtSettler.clean()
-      expect(await debtSettler.recordsLength()).to.be.equal(1)
+      expect(await debtSettler.usersCreditLength()).to.be.equal(1)
     })
 
     it('Should recover _stuck_ founds', async function () {
@@ -424,69 +418,75 @@ describe('Debt settler', async function () {
 
       expect(await token.balanceOf(treasury.address)).to.be.equal(0)
     })
-  })
 
-  it.only('increases gas spent while building when there are more borrowers', async function () {
-    const fixtures = await loadFixture(deploy)
-    const {
-      alice,
-      bob,
-      dToken,
-      cPool,
-      lPool,
-      debtSettler,
-      token,
-      treasury,
-    } = fixtures
-    await setupCollateral(fixtures)
-    // Add liquidity & Repayment
-    await token.mint(lPool.address, 50e18 + '')
-    let amountOfBorrowers = 300;
-    for (let index = 0; index < amountOfBorrowers; index++) {
-      // get a signer
-      let curSigner = ethers.Wallet.createRandom();
-      // add it to Hardhat Network
-      curSigner = curSigner.connect(ethers.provider);
-      // send some gas ether
-      await alice.sendTransaction({to: curSigner.address, value: ethers.utils.parseEther('0.3')});
-      // generate token balance
-      await token.mint(curSigner.address, 1e18 + '')
-      // approve and deposit
-      await token.connect(curSigner).approve(cPool.address, 100e18 + '')
-      await expect(cPool.connect(curSigner)['deposit(uint256)'](1e17 + '')).to.emit(cPool, 'Deposit')
-      // console.log(`Borrowing for user #${index + 1} with address ${curSigner.address}`)
-      await lPool.connect(curSigner).borrow(1);
-      let signerDebt = await lPool['debt(address)'](curSigner.address)
-      expect(signerDebt).to.be.eq(1);
-    }
-    await token.mint(treasury.address, 100e18 + '')
-    // await token.connect(treasury).approve(lPool.address, 100e18 + '')
-    // let buildTx = await lPool.connect(treasury).buildMassiveRepay(ethers.utils.parseEther('50'), {gasLimit: 10000000 })
-    await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
-    let buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
-    let buildReceipt = await buildTx.wait()
-    console.log(`\n[1] Gas used to build ${amountOfBorrowers} borrowers: ${buildReceipt.gasUsed}`)
-    // await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
-    buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
-    buildReceipt = await buildTx.wait()
-    console.log(`\n[2] Gas used to build ${amountOfBorrowers} borrowers: ${buildReceipt.gasUsed}`)
-    // await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
-    buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
-    buildReceipt = await buildTx.wait()
-    console.log(`\n[3] Gas used to build ${amountOfBorrowers} borrowers: ${buildReceipt.gasUsed}`)
-    expect(buildReceipt.gasUsed).to.be.greaterThan(1e6) // last only process 50 borrowers so should be left a few
-    // buildTx = await debtSettler.connect(treasury).build()
-    // buildReceipt = await buildTx.wait()
-    // console.log(`\n[4] Gas used to build ${amountOfBorrowers} borrowers: ${buildReceipt.gasUsed}`)
+    it('increases gas spent while building when there are more borrowers', async function () {
+      const fixtures = await loadFixture(deploy)
+      const {
+        alice,
+        cPool,
+        lPool,
+        debtSettler,
+        token,
+        treasury,
+      } = fixtures
+      await setupCollateral(fixtures)
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 50e18 + '')
+      let amountOfBorrowers = 300;
+      for (let index = 0; index < amountOfBorrowers; index++) {
+        // get a signer
+        let curSigner = ethers.Wallet.createRandom();
+        // add it to Hardhat Network
+        curSigner = curSigner.connect(ethers.provider);
+        // send some gas ether
+        await alice.sendTransaction({to: curSigner.address, value: ethers.utils.parseEther('0.3')});
+        // generate token balance
+        await token.mint(curSigner.address, 1e18 + '')
+        // approve and deposit
+        await token.connect(curSigner).approve(cPool.address, 100e18 + '')
+        await expect(cPool.connect(curSigner)['deposit(uint256)'](1e17 + '')).to.emit(cPool, 'Deposit')
+        await lPool.connect(curSigner).borrow(1);
+        let signerDebt = await lPool['debt(address)'](curSigner.address)
+        expect(signerDebt).to.be.eq(1);
+      }
+      await token.mint(treasury.address, 100e18 + '')
+      await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
+      let buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      let buildReceipt = await buildTx.wait()
 
-    let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-    console.log(`\n[1] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
-     buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-    console.log(`\n[2] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
+      expect(buildReceipt.gasUsed).to.be.greaterThan(9e6)
 
-    // this one will run without paying
-     buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-    expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
-    console.log(`\n[3] Gas used to  repay ${amountOfBorrowers} borrowers: ${buildReceipt2.gasUsed}`)
+      buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      buildReceipt = await buildTx.wait()
+      expect(buildReceipt.gasUsed).to.be.greaterThan(9e6)
+
+      buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      buildReceipt = await buildTx.wait()
+
+      expect(buildReceipt.gasUsed).to.be.lessThan(4e6) // last only process 50 borrowers so should be left a few
+
+      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
+
+      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(buildReceipt2.gasUsed).to.be.lessThan(2e6)
+
+      // this one will run without paying
+      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(buildReceipt2.gasUsed).to.be.lessThan(2e6)
+    })
+
+    it('Should not reset indexes', async function () {
+      const { bob, debtSettler } = await loadFixture(deploy)
+
+      await expect(debtSettler.connect(bob).changeIndexes(1,2)).to.be.revertedWithCustomError(debtSettler, 'NotAdmin')
+    })
+
+    it('Should reset indexes', async function () {
+      const { debtSettler } = await loadFixture(deploy)
+
+      // deployer is the admin
+      await expect(debtSettler.changeIndexes(0, 0)).to.not.be.reverted
+    })
   })
 })
