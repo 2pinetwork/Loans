@@ -143,8 +143,8 @@ contract DebtSettler is PiAdmin {
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
             (address _borrower, uint _credit) = _usersCredit.at(i);
 
-            if (_credit > 0 && dToken.balanceOf(_borrower) > 0) {
-                pool.repayFor(_borrower, _credit);
+            if (_credit > 0 ) {
+                if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
                 _usersCredit.set(_borrower, 0);
             }
 
