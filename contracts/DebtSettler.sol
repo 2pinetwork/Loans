@@ -44,6 +44,7 @@ contract DebtSettler is PiAdmin {
     // Errors
     error InvalidPool();
     error StillBuilding();
+    error StillPaying();
     error UnknownSender();
 
     /**
