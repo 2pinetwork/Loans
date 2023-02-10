@@ -210,7 +210,7 @@ describe('Debt settler', async function () {
       await (await debtSettler.connect(treasury).pay()).wait()
 
       // Since debt is calculated before payment, next block we have _some_
-      const blocksFromDebt = 5
+      const blocksFromDebt         = 5
       const oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(
@@ -223,7 +223,7 @@ describe('Debt settler', async function () {
 
       // This should have no effect since we already paid the debt
       // and borrowers have been set to zero balance
-      await network.provider.send("evm_setAutomine", [false])
+      await network.provider.send('evm_setAutomine', [false])
       const block = (await ethers.provider.getBlock()).number
 
       // Pay everything without mine the block
@@ -234,7 +234,7 @@ describe('Debt settler', async function () {
 
       expect((await ethers.provider.getBlock()).number).to.be.equal(block + 1)
 
-      await network.provider.send("evm_setAutomine", [true])
+      await network.provider.send('evm_setAutomine', [true])
 
       // This should be increased by one block since previous check
       // And a little bit more =)
@@ -432,32 +432,38 @@ describe('Debt settler', async function () {
       await setupCollateral(fixtures)
       // Add liquidity & Repayment
       await token.mint(lPool.address, 50e18 + '')
-      let amountOfBorrowers = 300;
+
+      let amountOfBorrowers = 300
+
       for (let index = 0; index < amountOfBorrowers; index++) {
         // get a signer
-        let curSigner = ethers.Wallet.createRandom();
+        let curSigner = ethers.Wallet.createRandom()
         // add it to Hardhat Network
-        curSigner = curSigner.connect(ethers.provider);
+        curSigner = curSigner.connect(ethers.provider)
+
         // send some gas ether
-        await alice.sendTransaction({to: curSigner.address, value: ethers.utils.parseEther('0.3')});
+        await alice.sendTransaction({to: curSigner.address, value: ethers.utils.parseEther('0.3')})
         // generate token balance
         await token.mint(curSigner.address, 1e18 + '')
         // approve and deposit
         await token.connect(curSigner).approve(cPool.address, 100e18 + '')
         await expect(cPool.connect(curSigner)['deposit(uint256)'](1e17 + '')).to.emit(cPool, 'Deposit')
-        await lPool.connect(curSigner).borrow(1);
+        await lPool.connect(curSigner).borrow(1)
+
         let signerDebt = await lPool['debt(address)'](curSigner.address)
-        expect(signerDebt).to.be.eq(1);
+
+        expect(signerDebt).to.be.eq(1)
       }
       await token.mint(treasury.address, 100e18 + '')
       await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
-      let buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      let buildTx      = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
       let buildReceipt = await buildTx.wait()
 
       expect(buildReceipt.gasUsed).to.be.greaterThan(9e6)
 
-      buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      buildTx      = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
       buildReceipt = await buildTx.wait()
+
       expect(buildReceipt.gasUsed).to.be.greaterThan(9e6)
 
       buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })

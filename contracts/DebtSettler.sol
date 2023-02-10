@@ -161,6 +161,7 @@ contract DebtSettler is PiAdmin {
      * @dev Clean up the list of borrowers which have no debt left.
      */
     function clean() external onlyHandler nonReentrant {
+        if (_lastIndexPaid > 0) revert StillPaying();
         address[] memory _toRemove = new address[](_usersCredit.length());
         uint _toRemoveLength = 0;
 
