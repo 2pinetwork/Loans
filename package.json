@@ -5,6 +5,9 @@
   "scripts": {
     "coverage": "rm -Rf coverage.json coverage/ cache/ && npx hardhat coverage",
     "test": "npx hardhat test",
+    "itest:optimism": "HARDHAT_INTEGRATION_CHAIN=10 HARDHAT_INTEGRATION_TESTS=true npx hardhat test",
+    "itest:polygon": "HARDHAT_INTEGRATION_CHAIN=137 HARDHAT_INTEGRATION_TESTS=true npx hardhat test",
+    "itest": "yarn itest:optimism; yarn itest:polygon",
     "compile": "npx hardhat compile",
     "lint": "eslint test/"
   },

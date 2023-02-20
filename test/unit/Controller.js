@@ -1,7 +1,6 @@
-const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { deployOracle, impersonateContract, ZERO_ADDRESS } = require('./helpers')
+const { deployOracle, impersonateContract, ZERO_ADDRESS } = require('../helpers')
 
 const setupCollateral = async function (fixtures) {
   const {

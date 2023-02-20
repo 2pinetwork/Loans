@@ -12,6 +12,8 @@ import "../interfaces/IStrategy.sol";
 import "../interfaces/IOracle.sol";
 import "../libraries/Errors.sol";
 
+import "hardhat/console.sol";
+
 /**
  * @title Controller
  *
@@ -32,7 +34,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     uint constant public RATIO_PRECISION = 10000;
     uint constant public MAX_WITHDRAW_FEE = 100; // 1%
     uint public withdrawFee = 0; // 0%
-    uint public minStrategyDepositAmount = 1e18;
+    uint public minStrategyDepositAmount;
 
     // Deposit limit a contract can hold
     // This value should be in the same decimal representation as asset
@@ -134,6 +136,8 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         piGlobal = IPiGlobal(_pool.piGlobal());
         treasury = piGlobal.treasury();
         pool = address(_pool);
+
+        minStrategyDepositAmount = 10 ** asset.decimals(); // default
     }
 
     /**

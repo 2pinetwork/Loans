@@ -1,4 +1,3 @@
-const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 const { anyValue }    = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
 
@@ -8,7 +7,7 @@ const {
   impersonateContract,
   mine,
   ZERO_ADDRESS
-} = require('./helpers')
+} = require('../helpers')
 
 const getPiFeeFor = async function (lPool, amount) {
   // 1% piFee

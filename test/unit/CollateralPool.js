@@ -1,7 +1,6 @@
-const { expect }      = require('chai')
 const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
-const { impersonateContract, ZERO_ADDRESS } = require('./helpers')
+const { impersonateContract, ZERO_ADDRESS } = require('../helpers')
 
 describe('Collateral Pool', async function () {
   const deploy = async function () {

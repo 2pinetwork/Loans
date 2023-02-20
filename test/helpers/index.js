@@ -1,5 +1,8 @@
 require('./setup')
 
+const { expect } = require('chai')
+global.expect = expect
+
 const constants = require('./constants')
 
 const toHex = function (n) {
@@ -13,6 +16,22 @@ const mine = async function (n, time) {
 
   await hre.network.provider.send("hardhat_mine", args);
 }
+
+const mineUntil = async function (n) {
+  const block = (await hre.ethers.provider.getBlock()).number
+
+  await mine(n - block)
+}
+
+const deploy = async function (name, ...args) {
+  const contract = await (await ethers.getContractFactory(name)).deploy(...args)
+
+  await contract.deployTransaction.wait()
+
+  return contract
+}
+
+const waitFor = async function (tx) { return await (await tx).wait() }
 
 const impersonateContract = async function (addr) {
   // Fill with gas 10k eth
@@ -58,10 +77,13 @@ const getInterest = async function (lPool, base, seconds) {
 }
 
 module.exports = {
+  deploy,
   deployOracle,
   getInterest,
-  toHex,
-  mine,
   impersonateContract,
+  mine,
+  mineUntil,
+  toHex,
+  waitFor,
   ...constants
 }
