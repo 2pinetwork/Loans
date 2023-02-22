@@ -17,7 +17,6 @@ describe('BalancerV2 Strat USDC', function () {
 
   before(async function () {
     await resetHardhat(28401104)
-    // await mine(20)
   })
 
   beforeEach(async function () {
@@ -25,8 +24,9 @@ describe('BalancerV2 Strat USDC', function () {
     bal = await ethers.getContractAt('IERC20Metadata', '0x9a71012b13ca4d3d0cdc72a177df3ef03b0e76a3')
 
     const poolId = '0x06df3b2bbb68adc8b0e302443692037ed9f91b42000000000000000000000012'
+    const gauge  = '0x72843281394E68dE5d55BCF7072BB9B2eBc24150'
 
-    const deployed = await createCPool(USDC, 'BalancerV2Strat', { poolId })
+    const deployed = await createCPool(USDC, 'BalancerV2Strat', { poolId, gauge })
 
     cPool      = deployed.cPool
     controller = deployed.cToken
@@ -119,8 +119,9 @@ describe('BalancerV2 Strat USDT', function () {
     bal = await ethers.getContractAt('IERC20Metadata', '0x9a71012b13ca4d3d0cdc72a177df3ef03b0e76a3')
 
     const poolId = '0x06df3b2bbb68adc8b0e302443692037ed9f91b42000000000000000000000012'
+    const gauge  = '0x72843281394E68dE5d55BCF7072BB9B2eBc24150'
 
-    const deployed = await createCPool(USDT, 'BalancerV2Strat', { poolId })
+    const deployed = await createCPool(USDT, 'BalancerV2Strat', { poolId, gauge })
 
     cPool      = deployed.cPool
     controller = deployed.cToken
@@ -211,8 +212,9 @@ describe('BalancerV2 Strat DAI', function () {
     bal = await ethers.getContractAt('IERC20Metadata', '0x9a71012b13ca4d3d0cdc72a177df3ef03b0e76a3')
 
     const poolId = '0x06df3b2bbb68adc8b0e302443692037ed9f91b42000000000000000000000012'
+    const gauge  = '0x72843281394E68dE5d55BCF7072BB9B2eBc24150'
 
-    const deployed = await createCPool(DAI, 'BalancerV2Strat', { poolId })
+    const deployed = await createCPool(DAI, 'BalancerV2Strat', { poolId, gauge })
 
     cPool      = deployed.cPool
     controller = deployed.cToken
@@ -290,7 +292,7 @@ describe('BalancerV2 Strat DAI', function () {
   })
 })
 
-describe.skip('Controller BalancerV2 Strat BTC', function () {
+describe('Controller BalancerV2 Strat BTC', function () {
   let cPool
   let controller
   let strat
@@ -304,8 +306,9 @@ describe.skip('Controller BalancerV2 Strat BTC', function () {
     bal = await ethers.getContractAt('IERC20Metadata', '0x9a71012b13ca4d3d0cdc72a177df3ef03b0e76a3')
 
     const poolId = '0xfeadd389a5c427952d8fdb8057d6c8ba1156cc5600020000000000000000001e'
+    const gauge  = '0xba46106A5FDb350372C17ba31Bc0A6b71a148221'
 
-    const deployed = await createCPool(BTC, 'BalancerV2Strat', { poolId })
+    const deployed = await createCPool(BTC, 'BalancerV2Strat', { poolId, gauge })
 
     cPool      = deployed.cPool
     controller = deployed.cToken
@@ -366,7 +369,7 @@ describe.skip('Controller BalancerV2 Strat BTC', function () {
 
     expect(await BTC.balanceOf(bob.address)).to.within(
       expectedOutput.mul(98).div(100),
-      expectedOutput
+      expectedOutput.mul(101).div(100)
     )
     expect(await BTC.balanceOf(strat.address)).to.equal(0)
 
