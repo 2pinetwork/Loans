@@ -200,6 +200,7 @@ const createCPool = async function (token, stratName, extraArgs = {}) {
           'BalancerV2Strat',
           '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
           extraArgs.poolId,
+          extraArgs.gauge,
           token.address,
           cToken.address,
           global.exchange.address,

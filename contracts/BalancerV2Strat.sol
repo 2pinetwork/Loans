@@ -2,8 +2,6 @@
 
 pragma solidity 0.8.17;
 
-import "hardhat/console.sol";
-
 import "./StratAbs.sol";
 import "../interfaces/IBalancer.sol";
 
@@ -14,6 +12,7 @@ contract BalancerV2Strat is StratAbs {
     bytes32 public constant HARVESTER_ROLE = keccak256("HARVESTER_ROLE");
 
     bytes32 public immutable poolId;
+    address public immutable gauge;
     IBalancerV2Vault public immutable vault;
 
     // Pool settings
@@ -25,11 +24,10 @@ contract BalancerV2Strat is StratAbs {
     uint public constant SHARES_PRECISION = 1e18; // same as BPT token
     IBalancerDistributor public immutable distributor = IBalancerDistributor(0x0F3e0c4218b7b0108a3643cFe9D3ec0d4F57c54e);
 
-    address public constant GAUGE = address(0x72843281394E68dE5d55BCF7072BB9B2eBc24150);
-
     constructor(
         IBalancerV2Vault _vault,
         bytes32 _poolId,
+        address _gauge,
         IERC20Metadata _want,
         address _controller,
         address _exchange,
@@ -39,11 +37,11 @@ contract BalancerV2Strat is StratAbs {
 
         vault = _vault;
         poolId = _poolId;
+        gauge = _gauge;
 
         require(_assets().length > 0, "Vault without tokens");
         _setupRole(HARVESTER_ROLE, msg.sender);
     }
-
 
     function identifier() external view returns (string memory) {
         return string(abi.encodePacked(
@@ -58,13 +56,13 @@ contract BalancerV2Strat is StratAbs {
         for (uint i = 0; i < rewardTokens.length; i++) {
             address reward = rewardTokens[i];
 
-            if (IBalancerGauge(GAUGE).claimable_reward(address(this), reward) > 0) {
+            if (IBalancerGauge(gauge).claimable_reward(address(this), reward) > 0) {
                 _claim = true;
                 break;
             }
         }
 
-        if (_claim) { IBalancerGauge(GAUGE).claim_rewards(); }
+        if (_claim) { IBalancerGauge(gauge).claim_rewards(); }
     }
 
     function _deposit() internal override {
@@ -105,8 +103,8 @@ contract BalancerV2Strat is StratAbs {
         // Stake
         uint _amount =  balanceOfVaultPool();
         if (_amount > 0) {
-            IERC20(pool()).safeApprove(GAUGE, _amount);
-            IBalancerGauge(GAUGE).deposit(_amount);
+            IERC20(pool()).safeApprove(gauge, _amount);
+            IBalancerGauge(gauge).deposit(_amount);
         }
     }
 
@@ -134,7 +132,7 @@ contract BalancerV2Strat is StratAbs {
             if (expected > _balanceOfPool) { expected = _balanceOfPool; }
 
             //Unstake
-            IBalancerGauge(GAUGE).withdraw(expected);
+            IBalancerGauge(gauge).withdraw(expected);
             require(balanceOfVaultPool() >= expected, "Gauge gave less than expected");
 
             bytes memory userData = abi.encode(BPT_IN_FOR_EXACT_TOKENS_OUT, amounts, expected);
@@ -165,7 +163,7 @@ contract BalancerV2Strat is StratAbs {
 
         //Unstake
         uint stakedBalance = balanceOfPool();
-        IBalancerGauge(GAUGE).withdraw(stakedBalance);
+        IBalancerGauge(gauge).withdraw(stakedBalance);
         require(balanceOfVaultPool() >= stakedBalance, "Gauge gave less than expected");
 
         uint index = 0;
@@ -214,7 +212,7 @@ contract BalancerV2Strat is StratAbs {
     }
 
     function balanceOfPool() public view override returns (uint) {
-        return IERC20(GAUGE).balanceOf(address(this));
+        return IERC20(gauge).balanceOf(address(this));
     }
 
     function balanceOfPoolInWant() public view override returns (uint) {
