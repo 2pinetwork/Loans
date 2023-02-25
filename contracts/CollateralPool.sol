@@ -87,7 +87,7 @@ contract CollateralPool is PiAdmin, Pausable {
      * @dev Modifier to restrict access to only EOA accounts. Only applies if `onlyEOA` is true.
      */
     modifier maybeOnlyEOA() {
-        if (onlyEOA && msg.sender != tx.origin) revert OnlyEOA();
+        if (onlyEOA && (msg.sender != tx.origin || msg.sender.code.length > 0)) revert OnlyEOA();
         _;
     }
 

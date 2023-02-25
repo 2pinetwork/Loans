@@ -436,5 +436,16 @@ describe('Collateral Pool', async function () {
         contractInteractionMock.deposit()
       ).to.be.not.reverted
     })
+
+    it('Should restrict to only EOA interactions even if origin == sender', async function () {
+      const { oracle, pool }   = await loadFixture(deploy)
+      const impersonatedOracle = await impersonateContract(oracle.address)
+
+      await pool.toggleOnlyEOA()
+
+      await expect(
+        pool.connect(impersonatedOracle)['deposit(uint256)'](1000)
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+    })
   })
 })
