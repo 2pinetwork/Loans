@@ -12,8 +12,6 @@ import "../interfaces/IStrategy.sol";
 import "../interfaces/IOracle.sol";
 import "../libraries/Errors.sol";
 
-import "hardhat/console.sol";
-
 /**
  * @title Controller
  *
@@ -285,20 +283,21 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     /**
      * @dev Withdraws collateral from the pool, normally used with a vault withdrawal
      *
-     * @param _senderUser The user account that is withdrawing
+     * @param _caller The caller of the function
+     * @param _owner The owner of the shares
      * @param _shares The amount of shares to withdraw
      *
      * @return The amount of collateral withdrawn
      * @return The amount of shares burned
      */
-    function withdraw(address _senderUser, uint _shares) external onlyPool nonReentrant returns (uint, uint) {
+    function withdraw(address _caller, address _owner, uint _shares) external onlyPool nonReentrant returns (uint, uint) {
         if (_shares == 0) revert Errors.ZeroShares();
         if (_withStrat()) strategy.beforeMovement();
 
         uint _amount = (balance() * _shares) / totalSupply();
 
         // Override with what really have been withdrawn
-        return _withdraw(_senderUser, _shares, _amount, true);
+        return _withdraw(_caller, _owner, _shares, _amount, true);
     }
 
     /**
@@ -306,21 +305,21 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * withdrawn amount is more than the requested the rest will be
      * returned to the strategy. We don't want to liquidate more than needed
      *
-     * @param _senderUser The user account that is withdrawing
+     * @param _owner The owner of the shares
      * @param _expectedAmount The amount of collateral to withdraw
      *
      * @return _withdrawn The amount of collateral withdrawn
      */
-    function withdrawForLiquidation(address _senderUser, uint _expectedAmount) external onlyPool nonReentrant returns (uint _withdrawn) {
+    function withdrawForLiquidation(address _owner, uint _expectedAmount) external onlyPool nonReentrant returns (uint _withdrawn) {
         if (_expectedAmount == 0) revert Errors.ZeroAmount();
         if (_withStrat()) strategy.beforeMovement();
 
         uint _shares = _expectedAmount * totalSupply() / balance();
 
-        (_withdrawn, ) = _withdraw(_senderUser, _shares, _expectedAmount, false);
+        (_withdrawn, ) = _withdraw(_owner, _owner, _shares, _expectedAmount, false);
     }
 
-    function _withdraw(address _senderUser, uint _shares, uint _amount, bool _withFee) internal returns (uint, uint) {
+    function _withdraw(address _caller, address _owner, uint _shares, uint _amount, bool _withFee) internal returns (uint, uint) {
         if (_amount == 0 || _shares == 0) revert Errors.ZeroAmount();
 
         uint _toTransfer = _amount;
@@ -355,7 +354,9 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
             }
         }
 
-        _burn(_senderUser, _shares);
+        if (_caller != _owner) _spendAllowance(_owner, _caller, _shares);
+
+        _burn(_owner, _shares);
 
         asset.safeTransfer(pool, _toTransfer);
 

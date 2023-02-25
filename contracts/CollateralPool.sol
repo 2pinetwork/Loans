@@ -106,10 +106,11 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @param _sender The address of the user who sent the withdrawal request.
      * @param _to The address of the user to whom the withdrawal was made.
+     * @param _owner The address of the user who owns the shares.
      * @param _amount The amount of asset withdrawn.
      * @param _shares The amount of shares burned.
      */
-    event Withdraw(address _sender, address _to, uint _amount, uint _shares);
+    event Withdraw(address _sender, address _to, address _owner, uint _amount, uint _shares);
 
     /**
      * @dev Emitted when the collateral ratio is changed.
@@ -201,6 +202,135 @@ contract CollateralPool is PiAdmin, Pausable {
     }
 
     /**
+     * @dev Returns the total amount of assets in the pool.
+     *
+     * @return The total amount of assets in the pool.
+     */
+    function totalAssets() public view returns (uint) {
+        return controller.balance();
+    }
+
+    /**
+     * @dev Return the maximum amount of assets deposit would allow to be deposited.
+     *
+     * @param _receiver The address of the user on behalf of whom the deposit is made.
+     *
+     * @return The maximum amount of assets deposit would allow to be deposited.
+     */
+    function maxDeposit(address _receiver) public view returns (uint) {
+        return controller.availableUserDeposit(_receiver);
+    }
+
+    /**
+     * @dev Returns the maximum amount of shares allowed to be minted.
+     *
+     * @param _receiver The address of the user on behalf of whom the mint is made.
+     *
+     * @return The maximum amount of shares allowed to be minted.
+     */
+    function maxMint(address _receiver) public view returns (uint) {
+        uint _maxDeposit = controller.availableUserDeposit(_receiver);
+
+        return controller.convertToShares(_maxDeposit);
+    }
+
+    /**
+     * @dev Returns the amount of shares if user deposits the given amount of assets.
+     *
+     * @param _amount The amount of assets to deposit.
+     *
+     * @return The amount of shares if user deposits the given amount of assets.
+     */
+    function previewDeposit(uint _amount) public view returns (uint) {
+        return controller.convertToShares(_amount);
+    }
+
+    /**
+     * @dev Returns the amount of assets if user withdraws the given amount of shares.
+     *
+     * @param _shares The amount of shares to withdraw.
+     *
+     * @return The amount of assets if user withdraws the given amount of shares.
+     */
+    function previewMint(uint _shares) public view returns (uint) {
+        return controller.convertToAssets(_shares);
+    }
+
+    /**
+     * @dev Mints shares to receiver by depositing assets to the pool.
+     *
+     * @param _shares The amount of shares to mint.
+     * @param _to The address of the receiver.
+     *
+     * @return The amount of assets deposited.
+     */
+    function mint(uint _shares, address _to) external nonReentrant returns (uint) {
+        if (_to == address(0)) revert Errors.ZeroAddress();
+
+        uint _amount = controller.convertToAssets(_shares);
+
+        _deposit(_amount, _to);
+
+        return _amount;
+    }
+
+    /**
+     * @dev Maximum amount of the underlying asset that can be withdrawn by the receiver.
+     *
+     * @param _receiver The address of the user on behalf of whom the withdraw is made.
+     *
+     * @return The maximum amount of the underlying asset that can be withdrawn by the receiver.
+     */
+    function maxWithdraw(address _receiver) public view returns (uint) {
+        return controller.convertToAssets(controller.balanceOf(_receiver));
+    }
+
+    /**
+     * @dev Returns the amount of shares if user withdraws the given amount of assets.
+     *
+     * @param _amount The amount of assets to withdraw.
+     *
+     * @return The amount of shares if user withdraws the given amount of assets.
+     */
+    function previewWithdraw(uint _amount) public view returns (uint) {
+        return controller.convertToShares(_amount);
+    }
+
+    /**
+     * @dev Returns the maximum amount of shares that can be redeemed from the owner.
+     *
+     * @param _owner The address of the owner.
+     *
+     * @return The maximum amount of shares that can be redeemed from the owner.
+     */
+    function maxRedeem(address _owner) public view returns (uint) {
+        return controller.balanceOf(_owner);
+    }
+
+    /**
+     * @dev Returns the amount of assets if user redeems the given amount of shares.
+     *
+     * @param _shares The amount of shares to redeem.
+     *
+     * @return The amount of assets if user redeems the given amount of shares.
+     */
+    function previewRedeem(uint _shares) public view returns (uint) {
+        return controller.convertToAssets(_shares);
+    }
+
+    /**
+     * @dev Performs a withdraw from the pool.
+     *
+     * @param _shares The amount of shares to withdraw.
+     * @param _to The address of the user on behalf of whom the withdraw is made.
+     *
+     * @return The amount of assets withdrawn.
+     */
+    function redeem(uint _shares, address _to) external nonReentrant returns (uint) {
+        return _withdraw(_shares, _to, msg.sender);
+    }
+
+    /**
      * @dev Returns the total balance of the controller.
      *
      * @return The total balance of the controller.
@@ -245,25 +375,42 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @param _shares The amount of shares to withdraw.
      * @param _to The address of the user to whom the withdrawal is made.
+     * @param _owner The address of the owner.
+     *
+     * @return The amount of assets withdrawn.
+     */
+    function withdraw(uint _shares, address _to, address _owner) external nonReentrant whenNotPaused returns (uint) {
+        return _withdraw(_shares, _to, _owner);
+    }
+
+    /**
+     * @dev Performs a withdrawal from the pool.
+     *
+     * @param _shares The amount of shares to withdraw.
+     * @param _to The address of the user to whom the withdrawal is made.
+     *
+     * @return The amount of assets withdrawn.
      */
     function withdraw(uint _shares, address _to) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
-        return _withdraw(_shares, _to);
+        return _withdraw(_shares, _to, msg.sender);
     }
 
     /**
      * @dev Performs a withdrawal from the pool on behalf of the sender.
      *
      * @param _shares The amount of shares to withdraw.
+    *
+    * @return The amount of assets withdrawn.
      */
     function withdraw(uint _shares) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
-        return _withdraw(_shares, msg.sender);
+        return _withdraw(_shares, msg.sender, msg.sender);
     }
 
     /**
      * @dev Performs a total withdrawal from the pool.
      */
     function withdrawAll() external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
-        return _withdraw(controller.balanceOf(msg.sender), msg.sender);
+        return _withdraw(controller.balanceOf(msg.sender), msg.sender, msg.sender);
     }
 
     /**
@@ -341,18 +488,18 @@ contract CollateralPool is PiAdmin, Pausable {
         emit Deposit(msg.sender, _onBehalfOf, _amount, _shares);
     }
 
-    function _withdraw(uint _shares, address _to) internal returns (uint) {
+    function _withdraw(uint _shares, address _to, address _owner) internal returns (uint) {
         if (_shares == 0) revert Errors.ZeroShares();
 
-        (uint _withdrawn, uint _burnedShares) = controller.withdraw(msg.sender, _shares);
+        (uint _withdrawn, uint _burnedShares) = controller.withdraw(msg.sender, _owner, _shares);
         if (_withdrawn == 0) revert NoFundsWithdrawn();
 
         asset.safeTransfer(_to, _withdrawn);
 
         // Can't withdraw with a HF lower than 1.0
-        IOracle(piGlobal.oracle()).checkHealthy(msg.sender);
+        IOracle(piGlobal.oracle()).checkHealthy(_owner);
 
-        emit Withdraw(msg.sender, _to, _withdrawn, _burnedShares);
+        emit Withdraw(msg.sender, _to, _owner, _withdrawn, _burnedShares);
 
         return _withdrawn;
     }
