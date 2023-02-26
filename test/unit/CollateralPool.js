@@ -33,6 +33,7 @@ describe('Collateral Pool', async function () {
       expect(await cToken.name()).to.be.equal('2pi Collateral t')
       expect(await cToken.symbol()).to.be.equal('2pi-C-t')
       expect(await cToken.decimals()).to.be.equal(18)
+      expect(await pool.totalAssets()).to.be.equal(0)
     })
 
     it('Should not allow to deploy with zero address as piGlobal', async function () {
@@ -184,6 +185,8 @@ describe('Collateral Pool', async function () {
       expect(await pool.convertToShares(1000)).to.be.equal(1000)
       // Check "expected amount" calculation after deposit
       expect(await pool.convertToAssets(1000)).to.be.equal(1000)
+      expect(await pool.maxWithdraw(bob.address)).to.be.equal(1000)
+      expect(await pool.maxRedeem(bob.address)).to.be.equal(1000)
 
       await token.mint(cToken.address, 8) // just to change the shares proportion
 
@@ -194,6 +197,7 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await cToken.balanceOf(alice.address)).to.be.equal(992)
       expect(await pool.balance()).to.be.equal(2008)
+      expect(await pool.totalAssets()).to.be.equal(2008)
     })
 
     it('Should not work for 0 amount', async function () {
@@ -223,6 +227,47 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1992)
       expect(await cToken.balanceOf(alice.address)).to.be.equal(0)
       expect(await pool.balance()).to.be.equal(2008)
+    })
+  })
+
+  describe('Mint', async function () {
+    it('Should work', async function () {
+      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob).mint(1000, alice.address)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(alice.address)).to.be.equal(1000)
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+    })
+
+    it('Should not work for 0 amount', async function () {
+      const { bob, cToken, pool } = await loadFixture(deploy)
+
+      // Overloading Ethers-v6
+      await expect(pool.connect(bob).mint(0, bob.address)).to.be.revertedWithCustomError(pool, 'ZeroAmount')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+    })
+
+    it('Should not work for zero address', async function () {
+      const { bob, cToken, pool } = await loadFixture(deploy)
+
+      // Overloading Ethers-v6
+      await expect(pool.connect(bob).mint(1000, ZERO_ADDRESS)).to.be.revertedWithCustomError(pool, 'ZeroAddress')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+    })
+
+    it('Should not work when no allowance', async function () {
+      const { bob, cToken, pool, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+
+      // Overloading Ethers-v6
+      await expect(pool.connect(bob).mint(1000, bob.address)).to.be.revertedWith('ERC20: insufficient allowance')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
     })
   })
 
@@ -272,6 +317,49 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(alice.address)).to.be.equal(10)
+    })
+
+    it('Should work to withdraw to other address and from owner != sender', async function () {
+      const { alice, bob, cToken, piGlobal, pool, token } = await loadFixture(deploy)
+      const treasury                                      = await piGlobal.treasury()
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+      await cToken.connect(bob).approve(alice.address, 10)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury, bob.address)).to.emit(pool, 'Withdraw')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+      expect(await token.balanceOf(treasury)).to.be.equal(10)
+      expect(await cToken.allowance(bob.address, alice.address)).to.be.equal(0)
+
+      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(bob.address)).to.be.equal(990)
+      expect(await token.balanceOf(treasury)).to.be.equal(10)
+    })
+
+    it('Should not work to withdraw to other address if owner != sender and no approval', async function () {
+      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+
+      // Overloading Ethers-v6
+      await expect(pool.connect(alice)['withdraw(uint256,address,address)'](10, alice.address, bob.address)).to.revertedWith('ERC20: insufficient allowance')
     })
 
     it('Should not work for 0 shares', async function () {
@@ -341,9 +429,43 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
+      await expect(pool.connect(bob)['withdraw(uint256,address,address)'](10, bob.address, bob.address)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob)['withdraw(uint256,address,address)'](10, bob.address, bob.address)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
       await expect(pool.connect(bob).withdrawAll()).to.be.revertedWith('Pausable: paused')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob).redeem(1000, bob.address)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+    })
+  })
+
+  describe('Redeem', async function () {
+    it('Should work', async function () {
+      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob).redeem(10, alice.address)).to.emit(pool, 'Withdraw')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(alice.address)).to.be.equal(10)
     })
   })
 
@@ -417,6 +539,10 @@ describe('Collateral Pool', async function () {
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
       await expect(
+        contractInteractionMock.mint()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
         contractInteractionMock.withdrawAll()
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
@@ -426,6 +552,14 @@ describe('Collateral Pool', async function () {
 
       await expect(
         contractInteractionMock.withdraw2()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.withdraw3()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.redeem()
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
       await pool.toggleOnlyEOA()
@@ -446,6 +580,52 @@ describe('Collateral Pool', async function () {
       await expect(
         pool.connect(impersonatedOracle)['deposit(uint256)'](1000)
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+    })
+  })
+
+  describe('ERC 4626 helpers', async function () {
+    it('Should return max deposit', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken, pool } = fixtures
+
+      expect(await pool.maxDeposit(bob.address)).to.be.equal(ethers.constants.MaxUint256)
+
+      await expect(cToken.setUserDepositLimit(1)).to.emit(cToken, 'NewUserDepositLimit').withArgs(0, 1)
+
+      expect(await pool.maxDeposit(bob.address)).to.be.equal(1)
+    })
+
+    it('Should return max mint', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { bob, cToken, pool } = fixtures
+
+      expect(await pool.maxMint(bob.address)).to.be.equal(ethers.constants.MaxUint256)
+
+      await expect(cToken.setUserDepositLimit(1)).to.emit(cToken, 'NewUserDepositLimit').withArgs(0, 1)
+
+      expect(await pool.maxMint(bob.address)).to.be.equal(1)
+    })
+
+    it('Should return deposit and mint preview', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { pool } = fixtures
+
+      // At first is all 1:1
+      expect(await pool.previewDeposit(1000)).to.be.equal(1000)
+      expect(await pool.previewMint(1000)).to.be.equal(1000)
+    })
+
+    it('Should return withdraw and redeem preview', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const { pool } = fixtures
+
+      // At first is all 1:1
+      expect(await pool.previewWithdraw(1000)).to.be.equal(1000)
+      expect(await pool.previewRedeem(1000)).to.be.equal(1000)
     })
   })
 })

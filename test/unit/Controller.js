@@ -430,7 +430,6 @@ describe('Controller', async function () {
       await strategy.pause(true)
 
       await expect(await cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
-
     })
 
     it('deposit & withdraw should revert with CouldNotWithdrawFromStrategy', async function () {
@@ -458,7 +457,7 @@ describe('Controller', async function () {
       const { bob, cToken } = fixtures
 
       await expect(
-        cToken.connect(bob).withdraw(bob.address, 1)
+        cToken.connect(bob).withdraw(bob.address, bob.address, 1)
       ).to.be.revertedWithCustomError(cToken, 'NotPool')
 
       await expect(
@@ -486,7 +485,7 @@ describe('Controller', async function () {
       const impersonatedPool = await impersonateContract(cPool.address)
 
       await expect(
-        cToken.connect(impersonatedPool).withdraw(bob.address, 0)
+        cToken.connect(impersonatedPool).withdraw(bob.address, bob.address, 0)
       ).to.be.revertedWithCustomError(cToken, 'ZeroShares')
     })
 
