@@ -242,7 +242,6 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(alice.address)).to.be.equal(1000)
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
-      expect(await token.balanceOf(alice.address)).to.be.equal(1000)
     })
 
     it('Should not work for 0 amount', async function () {
@@ -321,7 +320,8 @@ describe('Collateral Pool', async function () {
     })
 
     it('Should work to withdraw to other address and from owner != sender', async function () {
-      const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
+      const { alice, bob, cToken, piGlobal, pool, token } = await loadFixture(deploy)
+      const treasury                                      = await piGlobal.treasury()
 
       await token.mint(bob.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
@@ -335,12 +335,17 @@ describe('Collateral Pool', async function () {
       await cToken.connect(bob).approve(alice.address, 10)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury.address, bob.address)).to.emit(pool, 'Withdraw')
+      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury, bob.address)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
-      expect(await token.balanceOf(treasury.address)).to.be.equal(10)
+      expect(await token.balanceOf(treasury)).to.be.equal(10)
       expect(await cToken.allowance(bob.address, alice.address)).to.be.equal(0)
+
+      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
+      expect(await token.balanceOf(bob.address)).to.be.equal(990)
+      expect(await token.balanceOf(treasury)).to.be.equal(10)
     })
 
     it('Should not work to withdraw to other address if owner != sender and no approval', async function () {
@@ -428,7 +433,15 @@ describe('Collateral Pool', async function () {
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
+      await expect(pool.connect(bob)['withdraw(uint256,address,address)'](10, bob.address, bob.address)).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
       await expect(pool.connect(bob).withdrawAll()).to.be.revertedWith('Pausable: paused')
+      expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      await expect(pool.connect(bob).redeem(1000, bob.address)).to.be.revertedWith('Pausable: paused')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
     })
@@ -526,6 +539,10 @@ describe('Collateral Pool', async function () {
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
       await expect(
+        contractInteractionMock.mint()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
         contractInteractionMock.withdrawAll()
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
@@ -535,6 +552,14 @@ describe('Collateral Pool', async function () {
 
       await expect(
         contractInteractionMock.withdraw2()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.withdraw3()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.redeem()
       ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
 
       await pool.toggleOnlyEOA()

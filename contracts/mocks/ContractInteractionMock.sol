@@ -25,6 +25,10 @@ contract ContractInteractionMock {
         cPool.deposit(1000, address(0));
     }
 
+    function mint() external {
+        cPool.mint(1000, address(0));
+    }
+
     function withdraw() external {
         cPool.withdraw(1000);
     }
@@ -33,7 +37,15 @@ contract ContractInteractionMock {
         cPool.withdraw(1000, address(0));
     }
 
+    function withdraw3() external {
+        cPool.withdraw(1000, address(0), address(0));
+    }
+
     function withdrawAll() external {
         cPool.withdrawAll();
+    }
+
+    function redeem() external {
+        cPool.redeem(1000, address(0));
     }
 }

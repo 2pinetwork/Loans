@@ -264,7 +264,7 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @return The amount of assets deposited.
      */
-    function mint(uint _shares, address _to) external nonReentrant returns (uint) {
+    function mint(uint _shares, address _to) external nonReentrant maybeOnlyEOA returns (uint) {
         if (_to == address(0)) revert Errors.ZeroAddress();
 
         uint _amount = controller.convertToAssets(_shares);
@@ -326,7 +326,7 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @return The amount of assets withdrawn.
      */
-    function redeem(uint _shares, address _to) external nonReentrant whenNotPaused returns (uint) {
+    function redeem(uint _shares, address _to) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
         return _withdraw(_shares, _to, msg.sender);
     }
 
@@ -379,7 +379,7 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @return The amount of assets withdrawn.
      */
-    function withdraw(uint _shares, address _to, address _owner) external nonReentrant whenNotPaused returns (uint) {
+    function withdraw(uint _shares, address _to, address _owner) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
         return _withdraw(_shares, _to, _owner);
     }
 
