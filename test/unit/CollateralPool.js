@@ -335,10 +335,11 @@ describe('Collateral Pool', async function () {
       await cToken.connect(bob).approve(alice.address, 10)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, alice.address, bob.address)).to.emit(pool, 'Withdraw')
+      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury.address, bob.address)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
-      expect(await token.balanceOf(alice.address)).to.be.equal(10)
+      expect(await token.balanceOf(alice.address)).to.be.equal(0)
+      expect(await token.balanceOf(treasury.address)).to.be.equal(10)
       expect(await cToken.allowance(bob.address, alice.address)).to.be.equal(0)
     })
 
