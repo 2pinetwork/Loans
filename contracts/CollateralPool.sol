@@ -34,6 +34,7 @@ contract CollateralPool is PiAdmin, Pausable {
     // collateral for loans. 100% = 1e18
     uint public collateralRatio;
     uint public constant MAX_COLLATERAL_RATIO = 1e18;
+    bool public onlyEOA;
 
     /**
      * @dev Throws if called when a controller is already set.
@@ -56,6 +57,11 @@ contract CollateralPool is PiAdmin, Pausable {
     error NoFundsWithdrawn();
 
     /**
+     * @dev Throws when the account is not allowed to perform the action because it's not an EOA.
+     */
+    error OnlyEOA();
+
+    /**
      * @dev Initializes the contract.
      *
      * @param _piGlobal The address of the PiGlobal contract.
@@ -75,6 +81,14 @@ contract CollateralPool is PiAdmin, Pausable {
 
         asset = _asset;
         piGlobal = _piGlobal;
+    }
+
+    /**
+     * @dev Modifier to restrict access to only EOA accounts. Only applies if `onlyEOA` is true.
+     */
+    modifier maybeOnlyEOA() {
+        if (onlyEOA && (msg.sender != tx.origin || msg.sender.code.length > 0)) revert OnlyEOA();
+        _;
     }
 
     /**
@@ -213,7 +227,7 @@ contract CollateralPool is PiAdmin, Pausable {
      * @param _amount The amount of asset to deposit.
      * @param _onBehalfOf The address of the user on behalf of whom the deposit is made.
      */
-    function deposit(uint _amount, address _onBehalfOf) external nonReentrant {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant maybeOnlyEOA {
         _deposit(_amount, _onBehalfOf);
     }
 
@@ -222,7 +236,7 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @param _amount The amount of asset to deposit.
      */
-    function deposit(uint _amount) external nonReentrant {
+    function deposit(uint _amount) external nonReentrant maybeOnlyEOA {
         _deposit(_amount, msg.sender);
     }
 
@@ -232,7 +246,7 @@ contract CollateralPool is PiAdmin, Pausable {
      * @param _shares The amount of shares to withdraw.
      * @param _to The address of the user to whom the withdrawal is made.
      */
-    function withdraw(uint _shares, address _to) external nonReentrant whenNotPaused returns (uint) {
+    function withdraw(uint _shares, address _to) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
         return _withdraw(_shares, _to);
     }
 
@@ -241,14 +255,14 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @param _shares The amount of shares to withdraw.
      */
-    function withdraw(uint _shares) external nonReentrant whenNotPaused returns (uint) {
+    function withdraw(uint _shares) external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
         return _withdraw(_shares, msg.sender);
     }
 
     /**
      * @dev Performs a total withdrawal from the pool.
      */
-    function withdrawAll() external nonReentrant whenNotPaused returns (uint) {
+    function withdrawAll() external nonReentrant whenNotPaused maybeOnlyEOA returns (uint) {
         return _withdraw(controller.balanceOf(msg.sender), msg.sender);
     }
 
@@ -361,4 +375,10 @@ contract CollateralPool is PiAdmin, Pausable {
         paused() ? _unpause() : _pause();
     }
 
+    /**
+     * @dev Enables/Disables EOA only interactions.
+     */
+    function toggleOnlyEOA() external nonReentrant onlyAdmin {
+        onlyEOA = !onlyEOA;
+    }
 }

@@ -30,8 +30,8 @@ describe('Collateral Pool', async function () {
       expect(pool.address).to.not.be.equal(ZERO_ADDRESS)
       expect(cToken.address).to.not.be.equal(ZERO_ADDRESS)
 
-      expect(await cToken.name()).to.be.equal("2pi Collateral t")
-      expect(await cToken.symbol()).to.be.equal("2pi-C-t")
+      expect(await cToken.name()).to.be.equal('2pi Collateral t')
+      expect(await cToken.symbol()).to.be.equal('2pi-C-t')
       expect(await cToken.decimals()).to.be.equal(18)
     })
 
@@ -60,11 +60,33 @@ describe('Collateral Pool', async function () {
       expect(await pool.paused()).to.be.equal(false)
     })
 
-    it('Should not allow to pause by non admin', async function () {
+    it('Should not allow to pause by non pauser', async function () {
       const { pool, alice } = await loadFixture(deploy)
 
       await expect(pool.connect(alice).togglePause()).to.be.revertedWithCustomError(
         pool, 'NotPauser'
+      )
+    })
+
+    it('Should toggle only EOA', async function () {
+      const { pool } = await loadFixture(deploy)
+
+      expect(await pool.onlyEOA()).to.be.equal(false)
+
+      await pool.toggleOnlyEOA()
+
+      expect(await pool.onlyEOA()).to.be.equal(true)
+
+      await pool.toggleOnlyEOA()
+
+      expect(await pool.onlyEOA()).to.be.equal(false)
+    })
+
+    it('Should not allow to toggle only EOA by non admin', async function () {
+      const { pool, alice } = await loadFixture(deploy)
+
+      await expect(pool.connect(alice).toggleOnlyEOA()).to.be.revertedWithCustomError(
+        pool, 'NotAdmin'
       )
     })
   })
@@ -368,6 +390,62 @@ describe('Collateral Pool', async function () {
 
       expect(await token.balanceOf(pool.address)).to.be.equal(0)
       expect(await token.balanceOf(treasury)).to.be.equal(1000)
+    })
+  })
+
+  describe('Check EOA only interactions', async function () {
+    it('Should restrict to only EOA interactions', async function () {
+      const { bob, pool, token } = await loadFixture(deploy)
+
+      await pool.toggleOnlyEOA()
+
+      await token.mint(bob.address, 1000)
+      await token.connect(bob).approve(pool.address, 1000)
+
+      // Overloading Ethers-v6
+      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+
+      const ContractInteractionMock = await ethers.getContractFactory('ContractInteractionMock')
+      const contractInteractionMock = await ContractInteractionMock.deploy(pool.address)
+
+      await expect(
+        contractInteractionMock.deposit()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.deposit2()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.withdrawAll()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.withdraw()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await expect(
+        contractInteractionMock.withdraw2()
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
+
+      await pool.toggleOnlyEOA()
+
+      await token.mint(contractInteractionMock.address, 1000)
+
+      await expect(
+        contractInteractionMock.deposit()
+      ).to.be.not.reverted
+    })
+
+    it('Should restrict to only EOA interactions even if origin == sender', async function () {
+      const { oracle, pool }   = await loadFixture(deploy)
+      const impersonatedOracle = await impersonateContract(oracle.address)
+
+      await pool.toggleOnlyEOA()
+
+      await expect(
+        pool.connect(impersonatedOracle)['deposit(uint256)'](1000)
+      ).to.be.revertedWithCustomError(pool, 'OnlyEOA')
     })
   })
 })
