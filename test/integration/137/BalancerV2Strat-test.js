@@ -292,7 +292,7 @@ describe('BalancerV2 Strat DAI', function () {
   })
 })
 
-describe('Controller BalancerV2 Strat BTC', function () {
+describe('BalancerV2 Strat BTC', function () {
   let cPool
   let controller
   let strat

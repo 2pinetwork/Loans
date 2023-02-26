@@ -62,8 +62,10 @@ describe('Curve Strat DAI', function () {
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
     expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.equal(0)
 
+    const bobDeposit = await DAI.balanceOf(bob.address)
+
     await waitFor(DAI.connect(bob).approve(cPool.address, '' + 100e18))
-    await waitFor(cPool.connect(bob)['deposit(uint256)'](await DAI.balanceOf(bob.address)))
+    await waitFor(cPool.connect(bob)['deposit(uint256)'](bobDeposit))
 
     expect(await DAI.balanceOf(controller.address)).to.be.equal(0)
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
@@ -88,9 +90,7 @@ describe('Curve Strat DAI', function () {
 
     // withdraw 95 DAI in shares
     const toWithdraw = (
-      (await controller.totalSupply()).mul(95e18 + '').div(
-        await controller.balance()
-      )
+      await cPool.convertToShares(bobDeposit.mul(95).div(100))
     )
 
     await waitFor(cPool.connect(bob)['withdraw(uint256)'](toWithdraw))
@@ -116,7 +116,13 @@ describe('Curve Strat DAI', function () {
     await waitFor(DAI.connect(bob).approve(cPool.address, '' + 100e18))
     await waitFor(cPool.connect(bob)['deposit(uint256)'](await DAI.balanceOf(bob.address)))
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e18 + '')
+    expect(await controller.balanceOf(bob.address)).to.be.within(
+      99.9e18 + '', 100e18 + ''
+    )
+
+    const bobShares = await controller.balanceOf(bob.address)
+    expect(await controller.convertToAssets(bobShares)).to.be.within(99.9e18 + '', 100e18 + '')
+
     expect(await DAI.balanceOf(controller.address)).to.be.equal(0)
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
     expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.within(
@@ -136,7 +142,7 @@ describe('Curve Strat DAI', function () {
       strat.address, otherStrat.address
     )
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e18 + '')
+    expect(await controller.balanceOf(bob.address)).to.be.equal(bobShares)
     expect(await DAI.balanceOf(controller.address)).to.be.equal(0)
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
     expect(await strat.balance()).to.be.equal(0)
@@ -149,7 +155,7 @@ describe('Curve Strat DAI', function () {
       otherStrat.address, strat.address
     )
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e18 + '')
+    expect(await controller.balanceOf(bob.address)).to.be.equal(bobShares)
     expect(await DAI.balanceOf(controller.address)).to.be.equal(0)
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
     expect(await otherStrat.balance()).to.be.equal(0)
@@ -200,8 +206,10 @@ describe('Curve Strat USDC', function () {
     expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
     expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.equal(0)
 
+    const bobDeposit =  await USDC.balanceOf(bob.address)
+
     await waitFor(USDC.connect(bob).approve(cPool.address, '' + 100e6))
-    await waitFor(cPool.connect(bob)['deposit(uint256)'](await USDC.balanceOf(bob.address)))
+    await waitFor(cPool.connect(bob)['deposit(uint256)'](bobDeposit))
 
     expect(await USDC.balanceOf(controller.address)).to.be.equal(0)
     expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
@@ -226,9 +234,7 @@ describe('Curve Strat USDC', function () {
 
     // withdraw 95 USDC in shares
     const toWithdraw = (
-      (await controller.totalSupply()).mul(95e6 + '').div(
-        await controller.balance()
-      )
+      await cPool.convertToShares(bobDeposit.mul(95).div(100))
     )
 
     await waitFor(cPool.connect(bob)['withdraw(uint256)'](toWithdraw))
@@ -254,7 +260,9 @@ describe('Curve Strat USDC', function () {
     await waitFor(USDC.connect(bob).approve(cPool.address, '' + 100e6))
     await waitFor(cPool.connect(bob)['deposit(uint256)'](await USDC.balanceOf(bob.address)))
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e6 + '')
+    const bobShares = await controller.balanceOf(bob.address)
+
+    expect(bobShares).to.be.within(99.9e6 + '', 100e6 + '')
     expect(await USDC.balanceOf(controller.address)).to.be.equal(0)
     expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
     expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.within(
@@ -274,7 +282,7 @@ describe('Curve Strat USDC', function () {
       strat.address, otherStrat.address
     )
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e6 + '')
+    expect(await controller.balanceOf(bob.address)).to.be.equal(bobShares)
     expect(await USDC.balanceOf(controller.address)).to.be.equal(0)
     expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
     expect(await strat.balance()).to.be.equal(0)
@@ -287,7 +295,7 @@ describe('Curve Strat USDC', function () {
       otherStrat.address, strat.address
     )
 
-    expect(await controller.balanceOf(bob.address)).to.be.equal(100e6 + '')
+    expect(await controller.balanceOf(bob.address)).to.be.equal(bobShares)
     expect(await USDC.balanceOf(controller.address)).to.be.equal(0)
     expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
     expect(await otherStrat.balance()).to.be.equal(0)

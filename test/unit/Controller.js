@@ -288,7 +288,7 @@ describe('Controller', async function () {
 
       await expect(
         cToken.setMinStrategyDepositAmount(1)
-      ).to.emit(cToken, 'NewMinStrategyDepositAmount').withArgs(1e18 + '', 1)
+      ).to.emit(cToken, 'NewMinStrategyDepositAmount').withArgs(0.1e18 + '', 1)
     })
 
     it('should not work if not owner', async function () {
@@ -307,7 +307,7 @@ describe('Controller', async function () {
       const { cToken } = fixtures
 
       await expect(
-        cToken.setMinStrategyDepositAmount(1e18 + '')
+        cToken.setMinStrategyDepositAmount(0.1e18 + '')
       ).to.be.revertedWithCustomError(cToken, 'SameValue')
     })
 
@@ -324,21 +324,7 @@ describe('Controller', async function () {
       await token.connect(bob).approve(cPool.address, 1)
 
       expect(await token.balanceOf(cToken.address)).to.be.equal(0)
-      await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.emit(cPool, 'Deposit')
-
-      // Since we are below the min strategy deposit amount, the deposit should be kept in controller
-      expect(await token.balanceOf(cToken.address)).to.be.equal(1)
-      expect(await token.balanceOf(strategy.address)).to.be.equal(0)
-
-      const amount = ethers.utils.parseEther('2')
-
-      await token.mint(bob.address, amount)
-      await token.connect(bob).approve(cPool.address, amount)
-
-      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
-      // Since we exceed the min strategy deposit amount, all the deposit should be sent to strategy
-      expect(await token.balanceOf(cToken.address)).to.be.equal(0)
-      expect(await token.balanceOf(strategy.address)).to.be.equal(amount.add(1))
+      await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.revertedWithCustomError(cToken, 'MinDepositAmountNotReached')
     })
   })
 

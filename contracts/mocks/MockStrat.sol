@@ -16,6 +16,10 @@ contract MockStrat {
         return want.balanceOf(address(this));
     }
 
+    function balanceOfPool() public view returns (uint) {
+        return want.balanceOf(address(this));
+    }
+
     function retireStrat() external {
         if (!notRetire && balance() > 0) want.transfer(msg.sender, balance());
     }

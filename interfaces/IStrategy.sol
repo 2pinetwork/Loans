@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 interface IStrategy {
     function balance() external view returns (uint);
     function balanceOf() external view returns (uint);
+    function balanceOfPool() external view returns (uint);
     function beforeMovement() external;
     function deposit() external;
     function paused() external view returns (bool);

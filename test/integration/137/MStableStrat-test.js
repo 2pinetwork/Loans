@@ -545,4 +545,62 @@ describe('mStable Strat with DAI', function () {
     expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
     expect(await REWARD_TOKEN.balanceOf(strat.address)).to.be.equal(0)
   })
+
+  describe('setDepositShareThreshold', async () => {
+    it('should be reverted for non admin', async () => {
+      await expect(controller.connect(bob).setDepositShareThreshold(10)).to.be.revertedWith(
+        'Ownable: caller is not the owner'
+      )
+    })
+
+    it('should change depositShareThreshold', async () => {
+      expect(await controller.depositShareThreshold()).to.be.equal(0.99e18 + '')
+      await controller.setDepositShareThreshold(10)
+      expect(await controller.depositShareThreshold()).to.be.equal(10)
+    })
+
+    it('should revert for low depositShareThreshold', async () => {
+      const newBalance = ethers.BigNumber.from('' + 1e18).mul(100000) // 100000 DAI
+      await setCustomBalanceFor(DAI.address, bob.address, newBalance)
+
+      await controller.setDepositShareThreshold(1.1e18 + '') // just to prove it
+
+      await DAI.connect(bob).approve(cPool.address, newBalance)
+      await expect(cPool.connect(bob)['deposit(uint256)'](newBalance)).to.be.revertedWithCustomError(controller, 'LowSharePrice')
+    })
+
+    it('should revert for low depositShareThreshold after deposit in strat', async () => {
+      const newBalance = ethers.BigNumber.from('' + 1e18).mul(100000) // 100000 DAI
+      await setCustomBalanceFor(DAI.address, bob.address, newBalance)
+
+      await controller.setDepositShareThreshold(1.0e18 + '') // just to prove it
+
+      await DAI.connect(bob).approve(cPool.address, newBalance)
+      await expect(cPool.connect(bob)['deposit(uint256)'](newBalance)).to.be.revertedWithCustomError(controller, 'LowSharePrice')
+    })
+  })
+
+  describe('setWithdrawShareThreshold', async () => {
+    it('should be reverted for non admin', async () => {
+      await expect(controller.connect(bob).setWithdrawShareThreshold(10)).to.be.revertedWith(
+        'Ownable: caller is not the owner'
+      )
+    })
+
+    it('should change withdrawShareThreshold', async () => {
+      expect(await controller.withdrawShareThreshold()).to.be.equal(0.99e18 + '')
+      await controller.setWithdrawShareThreshold(10)
+      expect(await controller.withdrawShareThreshold()).to.be.equal(10)
+    })
+
+    it('should revert for low withdrawShareThreshold', async () => {
+      const newBalance = ethers.BigNumber.from('' + 1e18).mul(100000) // 100000 DAI
+      await setCustomBalanceFor(DAI.address, bob.address, newBalance)
+      await controller.setWithdrawShareThreshold(1.1e18 + '') // just to prove it
+
+      await DAI.connect(bob).approve(cPool.address, newBalance)
+      await waitFor(cPool.connect(bob)['deposit(uint256)'](newBalance))
+      await expect(cPool.connect(bob).withdrawAll()).to.be.revertedWithCustomError(controller, 'LowSharePrice')
+    })
+  })
 })

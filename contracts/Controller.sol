@@ -39,6 +39,8 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     // 0 value means unlimit
     uint public depositLimit;
     uint public userDepositLimit;
+    uint public depositShareThreshold;
+    uint public withdrawShareThreshold;
 
     /**
      * @dev Emitted when for some reason the founds can't be withdrawn from the strategy
@@ -65,6 +67,21 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @dev Emitted when trying to retire a strategy that still has funds
      */
     error StrategyStillHasDeposits();
+
+    /**
+     * @dev Emitted when for some reason the strategy is paused
+     */
+    error StrategyPaused();
+
+    /**
+     * @dev Emitted when the deposited amount is less than the minimum allowed
+     */
+    error MinDepositAmountNotReached();
+
+    /**
+     * @dev Emitted when for some reason the price per share is less than the thredhold
+     */
+    error LowSharePrice();
 
     /**
      * @dev Emitted when the strategy is changed
@@ -135,7 +152,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         treasury = piGlobal.treasury();
         pool = address(_pool);
 
-        minStrategyDepositAmount = 10 ** asset.decimals(); // default
+        minStrategyDepositAmount = 10 ** (asset.decimals() - 1); // default 0.1
+        // 99% of share/token value
+        depositShareThreshold = (10 ** asset.decimals()) * 9900 / RATIO_PRECISION;
+        withdrawShareThreshold = (10 ** asset.decimals()) * 9900 / RATIO_PRECISION;
     }
 
     /**
@@ -195,7 +215,8 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         strategy = _newStrategy;
 
-        _strategyDeposit();
+        // Ensure it doesn't revert for low amount
+        if (assetBalance() >= minStrategyDepositAmount) _strategyDeposit();
     }
 
     /**
@@ -251,6 +272,19 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         minStrategyDepositAmount = _amount;
     }
 
+    function setDepositShareThreshold(uint _t) external onlyOwner nonReentrant {
+        require(depositShareThreshold != _t, "Same value");
+
+        depositShareThreshold = _t;
+    }
+
+    function setWithdrawShareThreshold(uint _t) external onlyOwner nonReentrant {
+        require(withdrawShareThreshold != _t, "Same value");
+
+        withdrawShareThreshold = _t;
+    }
+
+
     /**
      * @dev Deposits collateral into the pool
      *
@@ -260,6 +294,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     function deposit(address _senderUser, uint _amount) external nonReentrant onlyPool returns (uint _shares) {
         if (_amount == 0) revert Errors.ZeroAmount();
         _checkDepositLimit(_senderUser, _amount);
+        _checkDepositShareThreadhold();
 
         if (_withStrat()) strategy.beforeMovement();
 
@@ -273,11 +308,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         uint _diff = balance() - _before;
 
-        _shares = (totalSupply() == 0) ? _diff : (_diff * totalSupply()) / _before;
+        _shares = (totalSupply() == 0) ? _diff : (_diff * totalSupply() / _before);
 
         _mint(_senderUser, _shares);
 
         _strategyDeposit();
+
+        _checkDepositShareThreadhold();
     }
 
     /**
@@ -294,7 +331,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         if (_shares == 0) revert Errors.ZeroShares();
         if (_withStrat()) strategy.beforeMovement();
 
-        uint _amount = (balance() * _shares) / totalSupply();
+        uint _amount = balance() * _shares / totalSupply();
 
         // Override with what really have been withdrawn
         return _withdraw(_caller, _owner, _shares, _amount, true);
@@ -321,6 +358,7 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
     function _withdraw(address _caller, address _owner, uint _shares, uint _amount, bool _withFee) internal returns (uint, uint) {
         if (_amount == 0 || _shares == 0) revert Errors.ZeroAmount();
+        _checkWithdrawShareThreadhold();
 
         uint _toTransfer = _amount;
         uint _balance = assetBalance();
@@ -341,7 +379,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         }
 
         // In case the strategy returns less than the requested amount
-        if (_toTransfer < _amount) _shares = _toTransfer * _shares / _amount;
+        // and the user is not the only one in the pool trying to withdraw all.
+        // If it's the only one withdrawing all the funds. The price share check
+        // will revert because of balance is 0
+        if (_toTransfer < _amount && totalSupply() != _shares)
+            _shares = _toTransfer * _shares / _amount;
 
         if (_withFee) {
             uint _withdrawalFee = _toTransfer * withdrawFee / RATIO_PRECISION;
@@ -360,7 +402,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
 
         asset.safeTransfer(pool, _toTransfer);
 
-        _strategyDeposit();
+        // Ensure it doesn't revert for low amount
+        if (assetBalance() >= minStrategyDepositAmount) _strategyDeposit();
+
+        _checkWithdrawShareThreadhold();
 
         return (_toTransfer, _shares);
     }
@@ -409,11 +454,11 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      *
      * @return The amount of liquidity equivalent of the shares
      */
-    function convertToAssets(uint _shares) external view returns (uint) {
+    function convertToAssets(uint _shares) public view returns (uint) {
         // Save some gas
         uint _totalSupply = totalSupply();
 
-        return (_totalSupply == 0) ? _shares : (_shares * balance()) / _totalSupply;
+        return (_totalSupply == 0) ? _shares : _shares * balance() / _totalSupply;
     }
 
     /**
@@ -455,18 +500,19 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
+    // This shouldn't be called with strategy paused or low amount
     function _strategyDeposit() internal {
         if (! _withStrat()) return;
         // If the line before didn't break the flow, strategy is present
-        if (strategy.paused()) return;
+        if (strategy.paused()) revert StrategyPaused();
 
         uint _amount = assetBalance();
 
-        if (_amount >= minStrategyDepositAmount) {
-            asset.safeTransfer(address(strategy), _amount);
+        if (_amount < minStrategyDepositAmount) revert MinDepositAmountNotReached();
 
-            strategy.deposit();
-        }
+        asset.safeTransfer(address(strategy), _amount);
+
+        strategy.deposit();
     }
 
     function _checkDepositLimit(address _user, uint _amount) internal view {
@@ -484,9 +530,21 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
      * @return The price per share
      */
     function pricePerShare() public view returns (uint) {
-        return totalSupply() == 0 ? _precision() : (balance() * _precision() / totalSupply());
+        uint _totalSupply = totalSupply();
+
+        return _totalSupply == 0 ? _precision() : (balance() * _precision() / _totalSupply);
     }
 
     function _precision() internal view returns (uint) { return 10 ** decimals(); }
     function _withStrat() internal view returns (bool) { return address(strategy) != address(0); }
+
+    function _checkDepositShareThreadhold() internal view {
+        // console.log("Deposit PPS:", pricePerShare());
+        if (depositShareThreshold > pricePerShare()) revert LowSharePrice();
+    }
+
+    function _checkWithdrawShareThreadhold() internal view {
+        // console.log("Withdraw PPS:", pricePerShare(), totalSupply());
+        if (withdrawShareThreshold > pricePerShare()) revert LowSharePrice();
+    }
 }

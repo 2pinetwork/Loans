@@ -335,6 +335,8 @@ describe('Liquidation', async function () {
       setupCollateral({...fixtures, lPool}),
       // prevent debt growth block by block
       // lPool.setInterestRate(0),
+      // prevent share checking
+      cToken.setWithdrawShareThreshold(0.2e18 + '')
     ])
 
     await expect(
@@ -371,7 +373,7 @@ describe('Liquidation', async function () {
     const ctroller = await impersonateContract(cToken.address)
 
     // trigger HF lower than before
-    await token.connect(ctroller).transfer(treasury.address, depositAmount.mul(95).div(100))
+    await token.connect(ctroller).transfer(treasury.address, depositAmount.mul(80).div(100))
 
     // Trigger HF with less than before liquidation
     await expect(
@@ -380,7 +382,7 @@ describe('Liquidation', async function () {
       cPool, 'CantLiquidate', 'HF is lower than before'
     )
 
-    await token.connect(treasury).transfer(ctroller.address, depositAmount.mul(95).div(100))
+    await token.connect(treasury).transfer(ctroller.address, depositAmount.mul(80).div(100))
 
     await expect(
       cPool.connect(alice).liquidationCall(bob.address, lPool.address, 1e18 + '')

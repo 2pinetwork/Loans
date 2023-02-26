@@ -257,9 +257,7 @@ contract JarvisStrat is StratAbs {
     mapping(address => address[]) public kyberRewardRoute;
     address public kyberExchange;
     address[] public kyberRewards;
-
     mapping(address => address) public rewardExchange;
-
 
     // This one is a little "hack" to bypass the want validation
     // from `setRewardToWantRoute`
