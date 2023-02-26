@@ -234,7 +234,6 @@ describe('Collateral Pool', async function () {
     it('Should work', async function () {
       const { alice, bob, cToken, pool, token } = await loadFixture(deploy)
 
-      await token.mint(alice.address, 1000)
       await token.mint(bob.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
 
