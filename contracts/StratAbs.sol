@@ -412,16 +412,16 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     // pauses deposits and withdraws all funds from third party systems.
-    function panic() external onlyAdmin nonReentrant {
+    function panic() external onlyPauser nonReentrant {
         _withdrawAll(); // max withdraw
         pause();
     }
 
-    function pause() public onlyAdmin {
+    function pause() public onlyPauser {
         _pause();
     }
 
-    function unpause() external onlyAdmin nonReentrant {
+    function unpause() external onlyPauser nonReentrant {
         _unpause();
 
         _deposit();
