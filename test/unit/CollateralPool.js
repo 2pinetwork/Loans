@@ -236,7 +236,6 @@ describe('Collateral Pool', async function () {
 
       await token.mint(alice.address, 1000)
       await token.mint(bob.address, 1000)
-      await token.connect(alice).approve(pool.address, 1000)
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
