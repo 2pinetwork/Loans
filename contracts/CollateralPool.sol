@@ -326,7 +326,7 @@ contract CollateralPool is PiAdmin, Pausable {
      *
      * @return The amount of assets withdrawn.
      */
-    function redeem(uint _shares, address _to) external nonReentrant returns (uint) {
+    function redeem(uint _shares, address _to) external nonReentrant whenNotPaused returns (uint) {
         return _withdraw(_shares, _to, msg.sender);
     }
 
