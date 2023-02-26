@@ -67,6 +67,10 @@ contract LiquidityPool is Pausable, PiAdmin {
     // Debt settler
     IDebtSettler public debtSettler;
 
+    // Whitelisted liquidity providers
+    mapping(address => bool) public whitelisted;
+    bool public whitelistEnabled;
+
     /**
      * @dev Throws when some parameter is changed after some debt has been issued.
      */
@@ -106,6 +110,10 @@ contract LiquidityPool is Pausable, PiAdmin {
      * @dev Throws when calling a function that is not from a valid collateral pool.
      */
     error UnknownSender();
+    /**
+     * @dev Throws when the account is not whitelisted to perform the action.
+     */
+    error NotWhitelisted();
 
     // constructor
     /**
@@ -152,6 +160,15 @@ contract LiquidityPool is Pausable, PiAdmin {
         if (! piGlobal.isValidCollateralPool(msg.sender)) revert UnknownSender();
         _;
     }
+
+    /**
+     * @dev Modifier to restrict access to only whitelisted addresses.
+     */
+    modifier checkAccess() {
+        if (whitelistEnabled && !whitelisted[msg.sender]) revert NotWhitelisted();
+        _;
+    }
+
 
     /**
      * @dev Emitted when a user deposits funds.
@@ -436,7 +453,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      * @param _amount The amount of liquidity to deposit.
      * @param _onBehalfOf The account to deposit on behalf of.
      */
-    function deposit(uint _amount, address _onBehalfOf) external nonReentrant notExpired {
+    function deposit(uint _amount, address _onBehalfOf) external nonReentrant notExpired checkAccess {
         _deposit(_amount, _onBehalfOf);
     }
 
@@ -445,7 +462,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      *
      * @param _amount The amount of liquidity to deposit.
      */
-    function deposit(uint _amount) external nonReentrant notExpired {
+    function deposit(uint _amount) external nonReentrant notExpired checkAccess {
         _deposit(_amount, msg.sender);
     }
 
@@ -481,7 +498,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      *
      * @return The amount of liquidity withdrawn.
      */
-    function withdraw(uint _shares, address _to) external nonReentrant returns (uint) {
+    function withdraw(uint _shares, address _to) external nonReentrant checkAccess returns (uint) {
         return _withdraw(_shares, _to);
     }
 
@@ -492,7 +509,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      *
      * @return The amount of liquidity withdrawn.
      */
-    function withdraw(uint _shares) external nonReentrant returns (uint) {
+    function withdraw(uint _shares) external nonReentrant checkAccess returns (uint) {
         return _withdraw(_shares, msg.sender);
     }
 
@@ -501,7 +518,7 @@ contract LiquidityPool is Pausable, PiAdmin {
      *
      * @return The amount of liquidity withdrawn.
      */
-    function withdrawAll() external nonReentrant returns (uint) {
+    function withdrawAll() external nonReentrant checkAccess returns (uint) {
         return _withdraw(lToken.balanceOf(msg.sender), msg.sender);
     }
 
@@ -806,5 +823,23 @@ contract LiquidityPool is Pausable, PiAdmin {
 
     function _hasDebtSettler() internal view returns (bool) {
         return address(debtSettler) != address(0);
+    }
+
+    /**
+     * @dev Enables/Disables the whitelist check.
+     */
+    function setWhitelistEnabled(bool _status) external onlyAdmin nonReentrant {
+        if (whitelistEnabled == _status) revert Errors.SameValue();
+
+        whitelistEnabled = _status;
+    }
+
+    /**
+     * @dev Enables/Disables address whitelist.
+     */
+    function setWhitelisted(address _user, bool _status) external onlyAdmin nonReentrant {
+        if (whitelisted[_user] == _status) revert Errors.SameValue();
+
+        whitelisted[_user] = _status;
     }
 }

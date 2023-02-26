@@ -123,23 +123,23 @@ describe('Jarvis Strat', function () {
 
     // Claim some rewards
     await mine(10)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
     expect(await strat.balanceOfPool()).to.be.above(balanceOfPool)
     expect(await strat.balance()).to.be.above(balance)
 
     balanceOfPool = await strat.balanceOfPool()
     balance = await strat.balance()
 
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
 
     // Claim all rewards
     await mineUntil(26400000)
     await updatePrices()
 
     // just to test multi harvest
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
 
     // balance Of pool shouldn't change after pool ends
     expect(await strat.balanceOfPool()).to.be.equal(balanceOfPool)
@@ -312,7 +312,7 @@ describe('Jarvis Strat', function () {
 
     await mine(10) // increase the rewards to be swapped
 
-    expect(await controller.setStrategy(otherStrat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(otherStrat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       strat.address, otherStrat.address
     )
 
@@ -324,7 +324,7 @@ describe('Jarvis Strat', function () {
 
     await mine(10) // increase the rewards to be swapped
     await waitFor(strat.unpause())
-    expect(await controller.setStrategy(strat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(strat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       otherStrat.address, strat.address
     )
 

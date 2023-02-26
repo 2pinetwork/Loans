@@ -96,7 +96,7 @@ describe('Solidly LP Strat on WETH', function () {
 
     await mine(100)
 
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
     expect(await strat.balanceOfPool()).to.be.above(balance)
 
     // withdraw 95 WETH in shares
@@ -156,7 +156,7 @@ describe('Solidly LP Strat on WETH', function () {
 
     await mine(100)
 
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
     expect(await strat.balanceOfPool()).to.be.above(balance)
 
     // withdraw 95 WETH in shares
@@ -385,7 +385,7 @@ describe('Solidly LP Strat on USDC', function () {
 
     await mine(100)
 
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
     expect(await strat.balanceOfPool()).to.be.above(balance)
 
     // withdraw 95000 USDC in shares
@@ -445,7 +445,7 @@ describe('Solidly LP Strat on USDC', function () {
 
     await mine(100)
 
-    expect(await strat.harvest()).to.emit(strat, 'Harvested')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested')
     expect(await strat.balanceOfPool()).to.be.above(balance)
 
     // withdraw 95000 USDC in shares

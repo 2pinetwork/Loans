@@ -178,7 +178,7 @@ describe('Collateral Pool', async function () {
       expect(await pool.convertToAssets(1000)).to.be.equal(1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
 
       // Check "expected shares" calculation after deposit
@@ -193,7 +193,7 @@ describe('Collateral Pool', async function () {
       // Check "expected shares" calculation after share proportion change
       expect(await pool.convertToShares(1000)).to.be.equal(992)
 
-      expect(await pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(alice)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await cToken.balanceOf(alice.address)).to.be.equal(992)
       expect(await pool.balance()).to.be.equal(2008)
@@ -217,13 +217,13 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await cToken.balanceOf(alice.address)).to.be.equal(0)
 
       await token.mint(cToken.address, 8) // just to change the shares proportion
 
-      expect(await pool.connect(alice)['deposit(uint256,address)'](1000, bob.address)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(alice)['deposit(uint256,address)'](1000, bob.address)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1992)
       expect(await cToken.balanceOf(alice.address)).to.be.equal(0)
       expect(await pool.balance()).to.be.equal(2008)
@@ -238,7 +238,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob).mint(1000, alice.address)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob).mint(1000, alice.address)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(alice.address)).to.be.equal(1000)
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
@@ -279,17 +279,17 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['withdraw(uint256)'](10)).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob)['withdraw(uint256)'](10)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(10)
 
-      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(1000)
     })
@@ -301,19 +301,19 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['withdraw(uint256,address)'](10, alice.address)).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob)['withdraw(uint256,address)'](10, alice.address)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(10)
 
-      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(alice.address)).to.be.equal(10)
@@ -327,7 +327,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
@@ -335,14 +335,14 @@ describe('Collateral Pool', async function () {
       await cToken.connect(bob).approve(alice.address, 10)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury, bob.address)).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(alice)['withdraw(uint256,address,address)'](10, treasury, bob.address)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
       expect(await token.balanceOf(treasury)).to.be.equal(10)
       expect(await cToken.allowance(bob.address, alice.address)).to.be.equal(0)
 
-      expect(await pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob).withdrawAll()).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(treasury)).to.be.equal(10)
@@ -355,7 +355,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
 
       // Overloading Ethers-v6
@@ -369,7 +369,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
@@ -387,7 +387,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
@@ -410,7 +410,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
@@ -455,14 +455,14 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob).redeem(10, alice.address)).to.emit(pool, 'Withdraw')
+      await expect(pool.connect(bob).redeem(10, alice.address)).to.emit(pool, 'Withdraw')
       expect(await cToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(alice.address)).to.be.equal(10)
@@ -525,7 +525,7 @@ describe('Collateral Pool', async function () {
       await token.connect(bob).approve(pool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
+      await expect(pool.connect(bob)['deposit(uint256)'](1000)).to.emit(pool, 'Deposit')
 
       const ContractInteractionMock = await ethers.getContractFactory('ContractInteractionMock')
       const contractInteractionMock = await ContractInteractionMock.deploy(pool.address)

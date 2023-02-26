@@ -65,7 +65,7 @@ describe('PiGlobal', async function () {
     it('Should be able to set treasury', async function () {
       const { owner, piGlobal, randomAddr } = await loadFixture(deploy)
 
-      await expect(await piGlobal.setTreasury(randomAddr)).to.emit(
+      await expect(piGlobal.setTreasury(randomAddr)).to.emit(
         piGlobal, 'NewTreasury'
       ).withArgs(owner.address, randomAddr)
 

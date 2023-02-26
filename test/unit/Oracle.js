@@ -272,7 +272,7 @@ describe('Oracle', async function () {
       await token.mint(alice.address, amount)
       await token.connect(alice).approve(cPool.address, amount)
 
-      expect(await cPool.connect(alice)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+      await expect(cPool.connect(alice)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
       await token.mint(lPool.address, 10)
       await lPool.connect(alice).borrow(10)
@@ -297,7 +297,7 @@ describe('Oracle', async function () {
       await token.mint(bob.address, amount)
       await token.connect(bob).approve(cPool.address, amount)
 
-      expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
       // Feed is 13.0 in both cases so 1:1
       expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(amount)
@@ -319,7 +319,7 @@ describe('Oracle', async function () {
       await token.mint(bob.address, amount)
       await token.connect(bob).approve(cPool.address, amount)
 
-      expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
       // Feed is 13.0 in both cases so 1:1
       expect(await oracle.availableCollateralForAsset(bob.address, newToken.address)).to.be.equal(
@@ -340,7 +340,7 @@ describe('Oracle', async function () {
       await token.mint(bob.address, amount)
       await token.connect(bob).approve(cPool.address, amount)
 
-      expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
       // Feed is 13.0 in both cases so 1:1
       expect(await oracle.availableCollateralForAsset(bob.address, token.address)).to.be.equal(amount.div(2))
@@ -357,7 +357,7 @@ describe('Oracle', async function () {
       await token.mint(bob.address, amount)
       await token.connect(bob).approve(cPool.address, amount)
 
-      expect(await cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
+      await expect(cPool.connect(bob)['deposit(uint256)'](amount)).to.emit(cPool, 'Deposit')
 
       await tokenFeed.setPrice(0)
 

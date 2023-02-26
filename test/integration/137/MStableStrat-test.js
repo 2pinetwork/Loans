@@ -96,7 +96,7 @@ describe('mStable Strat', function () {
     await mine(100)
 
     const treasuryBalance = await USDC.balanceOf(owner.address)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
     expect(await USDC.balanceOf(owner.address)).to.be.above(treasuryBalance)
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -147,7 +147,7 @@ describe('mStable Strat', function () {
     await mine(100)
 
     const treasuryBalance = await USDC.balanceOf(owner.address)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
     expect(await USDC.balanceOf(owner.address)).to.be.above(treasuryBalance)
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -282,13 +282,17 @@ describe('mStable Strat', function () {
     )
   })
 
-  it.skip('should revert if not whitelisted', async function () {
+  it('should revert if not whitelisted', async function () {
+    expect(await cPool.whitelistEnabled()).to.be.equal(false)
+
     await waitFor(cPool.setWhitelistEnabled(true))
 
-    await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.be.revertedWith('Not whitelisted')
+    expect(await cPool.whitelistEnabled()).to.be.equal(true)
+
+    await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.be.revertedWithCustomError(cPool, 'NotWhitelisted')
   })
 
- it.skip('Full deposit + harvest strat + withdraw for whitelisted user', async function () {
+ it('Full deposit + harvest strat + withdraw for whitelisted user', async function () {
     await cPool.setWhitelistEnabled(true)
     await cPool.setWhitelisted(bob.address, true)
 
@@ -312,7 +316,7 @@ describe('mStable Strat', function () {
     await mine(100)
 
     const treasuryBalance = await USDC.balanceOf(owner.address)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
     expect(await USDC.balanceOf(owner.address)).to.be.above(treasuryBalance)
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -334,7 +338,7 @@ describe('mStable Strat', function () {
 
     await cPool.setWhitelisted(bob.address, false)
 
-    await expect(cPool.connect(bob).withdrawAll()).to.be.revertedWith('Not whitelisted')
+    await expect(cPool.connect(bob).withdrawAll()).to.be.revertedWithCustomError(cPool, 'NotWhitelisted')
 
     expect(await USDC.balanceOf(bob.address)).to.within(
       94900e6 + '', 95000e6 + '' // 9500 - 0.1% withdrawFee
@@ -344,7 +348,7 @@ describe('mStable Strat', function () {
 
     await cPool.setWhitelisted(bob.address, true)
 
-    await expect(cPool.connect(bob).withdrawAll()).to.be.revertedWith('Not whitelisted')
+    await expect(cPool.connect(bob).withdrawAll()).to.emit(cPool, 'Withdraw')
     expect(await USDC.balanceOf(bob.address)).to.within(
       99800e6 + '', // between 0.1%
       100100e6 + ''
@@ -415,7 +419,7 @@ describe('mStable Strat with DAI', function () {
     await mine(100)
 
     const treasuryBalance = await DAI.balanceOf(owner.address)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
     expect(await DAI.balanceOf(owner.address)).to.be.above(treasuryBalance)
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -469,7 +473,7 @@ describe('mStable Strat with DAI', function () {
     await mine(100)
 
     const treasuryBalance = await DAI.balanceOf(owner.address)
-    expect(await strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee')
     expect(await DAI.balanceOf(owner.address)).to.be.above(treasuryBalance)
 
     expect(await strat.balanceOfPool()).to.be.above(balance)

@@ -411,11 +411,11 @@ describe('Controller', async function () {
       // Run the afterWithdraw deposit
       await token.mint(cToken.address, 1)
 
-      await expect(await cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
+      await expect(cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
 
       await strategy.pause(true)
 
-      await expect(await cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
+      await expect(cPool.connect(bob)['withdraw(uint256)'](1000)).to.emit(cPool, 'Withdraw').to.emit(cToken, 'WithdrawalFee')
     })
 
     it('deposit & withdraw should revert with CouldNotWithdrawFromStrategy', async function () {

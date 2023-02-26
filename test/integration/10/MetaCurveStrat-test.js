@@ -80,7 +80,7 @@ describe('Curve Strat DAI', function () {
     for (let i = 0; i < 20; i++) {
       await mine(5)
 
-      expect(await strat.harvest()).to.emit(strat, 'Harvested')
+      await expect(strat.harvest()).to.emit(strat, 'Harvested')
 
       if (balance < (await strat.balanceOfPool())) { break }
     }
@@ -137,7 +137,7 @@ describe('Curve Strat DAI', function () {
       owner.address
     )
 
-    expect(await controller.setStrategy(otherStrat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(otherStrat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       strat.address, otherStrat.address
     )
 
@@ -150,7 +150,7 @@ describe('Curve Strat DAI', function () {
     )
 
     await waitFor(strat.unpause())
-    expect(await controller.setStrategy(strat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(strat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       otherStrat.address, strat.address
     )
 
@@ -223,7 +223,7 @@ describe('Curve Strat USDC', function () {
     for (let i = 0; i < 20; i++) {
       await mine(5)
 
-      expect(await strat.harvest()).to.emit(strat, 'Harvested')
+      await expect(strat.harvest()).to.emit(strat, 'Harvested')
 
       if (balance < (await strat.balanceOfPool())) { break }
     }
@@ -351,7 +351,7 @@ describe('Curve Strat USDC', function () {
       owner.address
     )
 
-    expect(await controller.setStrategy(otherStrat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(otherStrat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       strat.address, otherStrat.address
     )
 
@@ -364,7 +364,7 @@ describe('Curve Strat USDC', function () {
     )
 
     await waitFor(strat.unpause())
-    expect(await controller.setStrategy(strat.address)).to.emit(controller, 'NewStrategy').withArgs(
+    await expect(controller.setStrategy(strat.address)).to.emit(controller, 'StrategyChanged').withArgs(
       otherStrat.address, strat.address
     )
 

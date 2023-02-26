@@ -352,7 +352,7 @@ describe('Liquidity Pool', async function () {
       expect(await lPool.convertToAssets(1000)).to.be.equal(1000)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
 
       // Check "expected shares" calculation after deposit
@@ -362,7 +362,7 @@ describe('Liquidity Pool', async function () {
 
       await token.mint(lPool.address, 8) // just to change the shares proportion
 
-      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
       expect(await lPool.balance()).to.be.equal(2008)
@@ -379,17 +379,16 @@ describe('Liquidity Pool', async function () {
       await token.connect(bob).approve(lPool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
 
       await token.mint(lPool.address, 8) // just to change the shares proportion
 
-      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
       expect(await lPool.balance()).to.be.equal(2008)
     })
-
 
     it('Should work on behalf of', async function () {
       const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
@@ -400,7 +399,7 @@ describe('Liquidity Pool', async function () {
       expect(await lToken.balanceOf(alice.address)).to.be.equal(0)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(bob)['deposit(uint256,address)'](1000, alice.address)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(bob)['deposit(uint256,address)'](1000, alice.address)).to.emit(lPool, 'Deposit')
       expect(await lPool.balanceOf(alice.address)).to.be.equal(1000)
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
@@ -417,6 +416,56 @@ describe('Liquidity Pool', async function () {
 
       await expect(_lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(_lPool, 'ExpiredPool')
     })
+
+    it('Should not work for non-whitelisted', async function () {
+      const { lPool } = await loadFixture(deploy)
+
+      await lPool.setWhitelistEnabled(true)
+
+      await expect(lPool['deposit(uint256)'](1)).to.be.revertedWithCustomError(lPool, 'NotWhitelisted')
+    })
+
+    it('Should work for whitelisted', async function () {
+      const { alice, bob, lPool, lToken, token } = await loadFixture(deploy)
+
+
+      await Promise.all([
+        lPool.setWhitelistEnabled(true),
+        lPool.setWhitelisted(bob.address, true),
+        token.mint(alice.address, 1000),
+        token.mint(bob.address, 1000),
+        token.connect(alice).approve(lPool.address, 1000),
+        token.connect(bob).approve(lPool.address, 1000)
+      ])
+
+      // Check "expected shares" calculation before deposit
+      expect(await lPool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation before deposit
+      expect(await lPool.convertToAssets(1000)).to.be.equal(1000)
+
+      // Overloading Ethers-v6
+      await expect(lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await token.balanceOf(bob.address)).to.be.equal(0)
+
+      // Check "expected shares" calculation after deposit
+      expect(await lPool.convertToShares(1000)).to.be.equal(1000)
+      // Check "expected amount" calculation after deposit
+      expect(await lPool.convertToAssets(1000)).to.be.equal(1000)
+
+      await token.mint(lPool.address, 8) // just to change the shares proportion
+
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.revertedWithCustomError(
+        lPool, 'NotWhitelisted'
+      )
+
+      await lPool.setWhitelisted(alice.address, true)
+
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
+      expect(await lToken.balanceOf(alice.address)).to.be.within(990, 1000)
+      expect(await lPool.balance()).to.be.equal(2008)
+    })
   })
 
   describe('Withdraw', async function () {
@@ -427,24 +476,24 @@ describe('Liquidity Pool', async function () {
       await token.connect(bob).approve(lPool.address, 1000)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(bob)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(1000)
       expect(await token.balanceOf(bob.address)).to.be.equal(0)
 
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(bob)['withdraw(uint256)'](10)).to.emit(lPool, 'Withdraw')
+      await expect(lPool.connect(bob)['withdraw(uint256)'](10)).to.emit(lPool, 'Withdraw')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(990)
       expect(await token.balanceOf(bob.address)).to.be.equal(10)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
-      expect(await lPool.connect(bob)['withdraw(uint256,address)'](10, alice.address)).to.emit(lPool, 'Withdraw')
+      await expect(lPool.connect(bob)['withdraw(uint256,address)'](10, alice.address)).to.emit(lPool, 'Withdraw')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(980)
       expect(await token.balanceOf(bob.address)).to.be.equal(10)
       expect(await token.balanceOf(alice.address)).to.be.equal(10)
 
 
-      expect(await lPool.connect(bob).withdrawAll()).to.emit(lPool, 'Withdraw')
+      await expect(lPool.connect(bob).withdrawAll()).to.emit(lPool, 'Withdraw')
       expect(await lToken.balanceOf(bob.address)).to.be.equal(0)
       expect(await token.balanceOf(bob.address)).to.be.equal(990)
     })
@@ -460,7 +509,7 @@ describe('Liquidity Pool', async function () {
       await token.connect(alice).approve(lPool.address, 1001)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
       expect(await token.balanceOf(alice.address)).to.be.equal(1)
 
@@ -468,7 +517,7 @@ describe('Liquidity Pool', async function () {
 
       // Check that shares keep tracking
       // Overloading Ethers-v6
-      expect(await lPool.connect(alice)['deposit(uint256)'](1)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](1)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1001)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
@@ -476,7 +525,7 @@ describe('Liquidity Pool', async function () {
       await expect(lPool.connect(alice)['withdraw(uint256)'](102)).to.be.revertedWithCustomError(lPool, 'InsufficientLiquidity')
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
-      expect(await lPool.connect(alice)['withdraw(uint256)'](101)).to.emit(lPool, 'Withdraw')
+      await expect(lPool.connect(alice)['withdraw(uint256)'](101)).to.emit(lPool, 'Withdraw')
 
       expect(await lToken.balanceOf(alice.address)).to.be.equal(900)
       expect(await token.balanceOf(alice.address)).to.be.equal(101)
@@ -493,7 +542,7 @@ describe('Liquidity Pool', async function () {
       await token.connect(alice).approve(lPool.address, 1100)
 
       // Overloading Ethers-v6
-      expect(await lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](1000)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1000)
       expect(await token.balanceOf(alice.address)).to.be.equal(100)
 
@@ -504,7 +553,7 @@ describe('Liquidity Pool', async function () {
 
       // Check that shares keep tracking (100 * 1000 / 1050 = 95.238)
       // Overloading Ethers-v6
-      expect(await lPool.connect(alice)['deposit(uint256)'](100)).to.emit(lPool, 'Deposit')
+      await expect(lPool.connect(alice)['deposit(uint256)'](100)).to.emit(lPool, 'Deposit')
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1095)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
@@ -516,7 +565,7 @@ describe('Liquidity Pool', async function () {
       expect(await token.balanceOf(lPool.address)).to.be.equal(250)
       expect(await token.balanceOf(alice.address)).to.be.equal(0)
 
-      expect(await lPool.connect(alice)['withdraw(uint256)'](238)).to.emit(lPool, 'Withdraw')
+      await expect(lPool.connect(alice)['withdraw(uint256)'](238)).to.emit(lPool, 'Withdraw')
 
       expect(await lToken.balanceOf(alice.address)).to.be.equal(1095 - 238)
       expect(await token.balanceOf(alice.address)).to.be.equal(249)
