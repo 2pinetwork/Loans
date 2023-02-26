@@ -80,7 +80,7 @@ contract JarvisStrat is StratAbs {
         return wantBalance() - _balance;
     }
 
-    function _withdrawFromPool(uint agEurCrvAmount) internal {
+    function _withdrawFromPool(uint agEurCrvAmount) internal override {
         // Remove staked from pool
         IJarvisPool(JARVIS_POOL).withdraw(JARVIS_POOL_ID, agEurCrvAmount);
 
@@ -101,6 +101,9 @@ contract JarvisStrat is StratAbs {
         _swapRewards();
 
         uint harvested = wantBalance() - _before;
+
+        // Charge fees for the swapped rewards
+        _chargeFees(harvested);
 
         // Charge performance fee for earned want + rewards
         _beforeMovement();
@@ -323,5 +326,9 @@ contract JarvisStrat is StratAbs {
 
         if (newReward) { kyberRewards.push(_reward); }
         kyberRewardRoute[_reward] = _route;
+    }
+
+    function _balanceOfPoolToWant(uint _amount) internal override view returns (uint) {
+        return _calc_withdraw_one_coin(_amount);
     }
 }

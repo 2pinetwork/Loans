@@ -83,7 +83,6 @@ describe('Curve Strat DAI', function () {
       expect(await strat.harvest()).to.emit(strat, 'Harvested')
 
       if (balance < (await strat.balanceOfPool())) { break }
-      console.log('Mined 6 blocks...')
     }
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -227,7 +226,6 @@ describe('Curve Strat USDC', function () {
       expect(await strat.harvest()).to.emit(strat, 'Harvested')
 
       if (balance < (await strat.balanceOfPool())) { break }
-      console.log('Mined 6 blocks...')
     }
 
     expect(await strat.balanceOfPool()).to.be.above(balance)
@@ -251,6 +249,81 @@ describe('Curve Strat USDC', function () {
     await waitFor(cPool.connect(bob).withdrawAll())
     expect(await USDC.balanceOf(bob.address)).to.be.above(99.8e6 + '').to.be.below(100e6 + '')
   })
+
+  it('harvest with debtSettler', async function () {
+    const newBalance = ethers.utils.parseUnits('100', 6)
+
+    await Promise.all([
+      setCustomBalanceFor(USDC.address, bob.address, newBalance),
+      setCustomBalanceFor(USDC.address, alice.address, newBalance),
+      waitFor(USDC.connect(alice).approve(cPool.address, newBalance)),
+      waitFor(USDC.connect(bob).approve(cPool.address, newBalance)),
+    ])
+
+    expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
+    expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.equal(0)
+
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+    const lPool       = await deploy('LiquidityPool', cPool.piGlobal(), USDC.address, dueDate)
+    const debtSettler = await deploy('DebtSettler', lPool.address)
+
+    await waitFor(strat.setDebtSettler(debtSettler.address))
+    await waitFor(strat.setTreasury(treasury.address))
+
+    expect(await USDC.balanceOf(treasury.address)).to.be.equal(0)
+    expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
+    expect(await USDC.balanceOf(debtSettler.address)).to.be.equal(0)
+
+    const bobDeposit = await USDC.balanceOf(bob.address)
+
+    await waitFor(cPool.connect(bob)['deposit(uint256)'](bobDeposit))
+
+    expect(await USDC.balanceOf(treasury.address)).to.be.equal(0)
+    expect(await USDC.balanceOf(debtSettler.address)).to.be.equal(0)
+    expect(await USDC.balanceOf(controller.address)).to.be.equal(0)
+    expect(await USDC.balanceOf(strat.address)).to.be.equal(0)
+    expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.within(
+      (100e18 - (100e18 * poolSlipage)) + '', // production virtual price is ~1.0093.
+      100e18 + ''
+    )
+
+    const balanceOfPool = await strat.balanceOfPool() // more decimals
+    const balance       = await strat.balance()
+
+    await mine(60)
+
+    await expect(strat.harvest()).to.emit(
+      strat, 'PerformanceFee'
+    ).to.emit(
+      strat, 'DebtSettlerTransfer'
+    ).to.emit(strat, 'Harvested')
+
+    expect(await USDC.balanceOf(treasury.address)).to.be.above(0)
+    expect(await USDC.balanceOf(debtSettler.address)).to.be.above(0)
+
+    expect(await strat.balanceOfPool()).to.be.equal(balanceOfPool)
+    expect(await strat.balance()).to.be.equal(balance)
+
+    // withdraw 95 USDC in shares
+    const toWithdraw = (
+      await cPool.convertToShares(bobDeposit.mul(95).div(100))
+    )
+
+    await waitFor(cPool.connect(bob)['withdraw(uint256)'](toWithdraw))
+
+    expect(await USDC.balanceOf(bob.address)).to.within(
+      94.9e6 + '', 95e6 + '' // 95 - 0.1% withdrawFee
+    )
+    expect(await USDC.balanceOf(strat.address)).to.equal(0)
+    expect(await CurveRewardsGauge.balanceOf(strat.address)).to.be.within(
+      4.6e18 + '', // 99.6 - 95
+      5e18 + ''
+    )
+
+    await waitFor(cPool.connect(bob).withdrawAll())
+    expect(await USDC.balanceOf(bob.address)).to.be.above(99.8e6 + '').to.be.below(100e6 + '')
+  })
+
 
   it('Deposit and change strategy', async function () {
     await setCustomBalanceFor(USDC.address, bob.address, ethers.utils.parseUnits('100', 6))

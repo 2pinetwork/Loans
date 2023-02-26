@@ -273,13 +273,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setDepositShareThreshold(uint _t) external onlyOwner nonReentrant {
-        require(depositShareThreshold != _t, "Same value");
+        if (depositShareThreshold == _t) revert Errors.SameValue();
 
         depositShareThreshold = _t;
     }
 
     function setWithdrawShareThreshold(uint _t) external onlyOwner nonReentrant {
-        require(withdrawShareThreshold != _t, "Same value");
+        if (withdrawShareThreshold == _t) revert Errors.SameValue();
 
         withdrawShareThreshold = _t;
     }
@@ -539,12 +539,10 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     function _withStrat() internal view returns (bool) { return address(strategy) != address(0); }
 
     function _checkDepositShareThreadhold() internal view {
-        // console.log("Deposit PPS:", pricePerShare());
         if (depositShareThreshold > pricePerShare()) revert LowSharePrice();
     }
 
     function _checkWithdrawShareThreadhold() internal view {
-        // console.log("Withdraw PPS:", pricePerShare(), totalSupply());
         if (withdrawShareThreshold > pricePerShare()) revert LowSharePrice();
     }
 }

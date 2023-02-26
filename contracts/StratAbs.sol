@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -45,6 +44,8 @@ abstract contract StratAbs is Swappable, Pausable {
     // manual boosts
     uint public lastExternalBoost;
 
+    address public debtSettler;
+
     // Migrate to a library or something
     function _checkIERC20(IERC20Metadata token, string memory errorMsg) internal view {
         require(address(token) != address(0), errorMsg);
@@ -76,6 +77,8 @@ abstract contract StratAbs is Swappable, Pausable {
     event PerformanceFee(uint _amount);
     event Boosted(address indexed booster, uint amount);
     event Compensated(address indexed equalizer, uint amount);
+    event DebtSettlerChanged(address _old, address _new);
+    event DebtSettlerTransfer(uint _amount);
 
     modifier onlyController() {
         require(msg.sender == controller, "Not from controller");
@@ -160,13 +163,23 @@ abstract contract StratAbs is Swappable, Pausable {
         equalizer = _equalizer;
     }
 
+    function setDebtSettler(address _ds) external onlyAdmin nonReentrant {
+        require(_ds != debtSettler, "Same address");
+        require(_ds != address(0), "!ZeroAddress");
+
+        emit DebtSettlerChanged(debtSettler, _ds);
+
+        debtSettler = _ds;
+    }
+
+
     function beforeMovement() external onlyController nonReentrant {
         _beforeMovement();
     }
 
     // Update new `lastBalance` for the next charge
     function _afterMovement() internal virtual {
-        lastBalance = balance();
+        lastBalance = balanceOfPool();
     }
 
     function deposit() external whenNotPaused onlyController nonReentrant {
@@ -210,11 +223,15 @@ abstract contract StratAbs is Swappable, Pausable {
 
         uint harvested = wantBalance() - _before;
 
+        // Charge fees for the swapped rewards
+        _chargeFees(harvested);
+
         // Charge performance fee for earned want + rewards
         _beforeMovement();
 
+
         // re-deposit
-        if (!paused()) { _deposit(); }
+        if (!paused() && wantBalance() > 0) _deposit();
 
         // Update lastBalance for the next movement
         _afterMovement();
@@ -244,47 +261,62 @@ abstract contract StratAbs is Swappable, Pausable {
         emit Boosted(msg.sender, _amount);
     }
 
-    function _beforeMovement() internal virtual{
-        uint currentBalance = balance();
+    function _beforeMovement() internal virtual {
+        uint _currentPoolBalance = _balanceOfPoolForMovement();
+        uint _currentBalance = wantBalance();
 
-        if (currentBalance > lastBalance) {
-            uint perfFee = ((currentBalance - lastBalance) * performanceFee) / RATIO_PRECISION;
+        if (_currentPoolBalance > lastBalance) {
+            uint _diff = _currentPoolBalance - lastBalance;
+            uint _perfFee = _diff * performanceFee / RATIO_PRECISION;
 
-            if (perfFee > 0) {
-                uint _balance = wantBalance();
+            // Prevent to raise when perfFee is super small
+            if (_perfFee > 0 && _balanceOfPoolToWant(_perfFee) > 0) {
+                _withdrawFromPool(_perfFee);
 
-                if (_balance < perfFee) {
-                    uint _diff = perfFee - _balance;
+                uint _feeInWant = wantBalance() - _currentBalance;
 
-                    _withdraw(_diff);
+                if (_feeInWant > 0) {
+                    want.safeTransfer(treasury, _feeInWant);
+                    emit PerformanceFee(_feeInWant);
                 }
+            }
 
-                // Just in case
-                _balance = wantBalance();
-                if (_balance < perfFee) { perfFee = _balance; }
+            // If debtSettler is set, we should sent all the generated balance to it
+            // after charge protocol fees.
+            if (address(debtSettler) != address(0)) {
+                uint _extra = _diff - _perfFee;
 
-                if (perfFee > 0) {
-                    want.safeTransfer(treasury, perfFee);
-                    emit PerformanceFee(perfFee);
+                if (_extra > 0 && _balanceOfPoolToWant(_extra) > 0) {
+                    // withdraw all the extra generated tokens in pool since lastBalance
+                    _withdrawFromPool(_extra);
+
+                    uint _extraInWant = wantBalance() - _currentBalance;
+                    // send to debtSettler all extra tokens since lastMovement
+                    if (_extraInWant > 0) {
+                        want.safeTransfer(debtSettler, _extraInWant);
+
+                        emit DebtSettlerTransfer(_extraInWant);
+                    }
                 }
             }
         }
     }
 
+
     function _deposit() internal virtual {
-        // should be implemented
+        // revert("Should be implemented");
     }
 
     function _withdraw(uint) internal virtual returns (uint) {
-        // should be implemented
+        // revert("Should be implemented");
     }
 
     function _withdrawAll() internal virtual returns (uint) {
-        // should be implemented
+        // revert("Should be implemented");
     }
 
     function _claimRewards() internal virtual {
-        // should be implemented
+        // revert("Should be implemented");
     }
 
     function _swapRewards() internal virtual {
@@ -311,12 +343,22 @@ abstract contract StratAbs is Swappable, Pausable {
      * @dev Takes out performance fee.
      */
     function _chargeFees(uint _harvested) internal {
-        uint fee = (_harvested * performanceFee) / RATIO_PRECISION;
+        uint _fee = (_harvested * performanceFee) / RATIO_PRECISION;
 
         // Pay to treasury a percentage of the total reward claimed
-        if (fee > 0) {
-            want.safeTransfer(treasury, fee);
-            emit PerformanceFee(fee);
+        if (_fee > 0) {
+            want.safeTransfer(treasury, _fee);
+            emit PerformanceFee(_fee);
+        }
+
+        if (address(debtSettler) != address(0)) {
+            uint _extra = _harvested - _fee;
+
+            // send to debtSettler all extra tokens since lastMovement
+            if (_extra > 0) {
+                want.safeTransfer(debtSettler, _extra);
+                emit DebtSettlerTransfer(_extra);
+            }
         }
     }
 
@@ -383,5 +425,17 @@ abstract contract StratAbs is Swappable, Pausable {
         _unpause();
 
         _deposit();
+    }
+
+    function _withdrawFromPool(uint) internal virtual {
+        // revert("Should be implemented");
+    }
+
+    function _balanceOfPoolToWant(uint) internal virtual view returns (uint) {
+        // revert("Should be implemented");
+    }
+
+    function _balanceOfPoolForMovement() internal virtual view returns (uint){
+        return balanceOfPool();
     }
 }

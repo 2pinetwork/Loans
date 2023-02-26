@@ -159,7 +159,7 @@ contract MetaCurveStrat is StratAbs {
         return wantBalance() - _balance;
     }
 
-    function _withdrawFromPool(uint _wantCrvAmount) internal {
+    function _withdrawFromPool(uint _wantCrvAmount) internal override {
         // Remove staked from gauge
         gauge.withdraw(_wantCrvAmount);
 

@@ -1,6 +1,8 @@
 require('./setup')
 
-const { expect } = require('chai')
+const { expect }   = require('chai')
+const { anyValue } = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
+
 global.expect = expect
 
 const constants = require('./constants')
@@ -77,6 +79,7 @@ const getInterest = async function (lPool, base, seconds) {
 }
 
 module.exports = {
+  anyValue,
   deploy,
   deployOracle,
   getInterest,

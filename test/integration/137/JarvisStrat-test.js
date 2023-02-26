@@ -172,6 +172,118 @@ describe('Jarvis Strat', function () {
     expect(await agcrv.balanceOf(strat.address)).to.be.equal(0)
   })
 
+  it('Harvest with debtSettler', async function () {
+    const newBalance = ethers.utils.parseUnits('100')
+    await setCustomBalanceFor(ageur.address, bob.address, newBalance, 51)
+
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+    const lPool       = await deploy('LiquidityPool', cPool.piGlobal(), ageur.address, dueDate)
+    const debtSettler = await deploy('DebtSettler', lPool.address)
+
+    await waitFor(strat.setDebtSettler(debtSettler.address))
+    await waitFor(strat.setTreasury(treasury.address))
+
+    expect(await ageur.balanceOf(treasury.address)).to.be.equal(0)
+    expect(await ageur.balanceOf(strat.address)).to.be.equal(0)
+    expect(await ageur.balanceOf(debtSettler.address)).to.be.equal(0)
+
+    await waitFor(ageur.connect(bob).approve(cPool.address, '' + 100e18))
+    await waitFor(cPool.connect(bob)['deposit(uint256)'](await ageur.balanceOf(bob.address)))
+
+    expect(await ageur.balanceOf(treasury.address)).to.be.equal(0)
+    expect(await ageur.balanceOf(debtSettler.address)).to.be.equal(0)
+    expect(await ageur.balanceOf(controller.address)).to.be.equal(0)
+    expect(await ageur.balanceOf(strat.address)).to.be.equal(0)
+
+    let balanceOfPool = await strat.balanceOfPool()
+    let balance = await strat.balance()
+
+    // Claim some rewards
+    await mine(10)
+    await expect(strat.harvest()).to.emit(strat, 'Harvested'
+    ).to.emit(strat, 'PerformanceFee').to.emit(strat, 'DebtSettlerTransfer')
+
+
+    let tBalance = await ageur.balanceOf(treasury.address)
+    let dBalance = await ageur.balanceOf(debtSettler.address)
+
+    expect(tBalance).to.be.above(0)
+    expect(dBalance).to.be.above(0)
+
+    expect(await strat.balanceOfPool()).to.be.equal(balanceOfPool)
+    expect(await strat.balance()).to.be.equal(balance)
+
+    balanceOfPool = await strat.balanceOfPool()
+    balance = await strat.balance()
+
+    await expect(strat.harvest()).to.emit(
+      strat, 'Harvested'
+    ).withArgs(
+      ageur.address, 0
+    ).to.not.emit(
+      strat, 'PerformanceFee'
+    ).to.not.emit(strat, 'DebtSettlerTransfer')
+
+    expect(await ageur.balanceOf(treasury.address)).to.be.equal(tBalance)
+    expect(await ageur.balanceOf(debtSettler.address)).to.be.equal(dBalance)
+
+    // Claim all rewards
+    await mineUntil(26400000)
+    await updatePrices()
+
+    // just to test multi harvest but the only one that should work is the first
+    await expect(strat.harvest()).to.emit(strat, 'Harvested').to.emit(strat, 'PerformanceFee').to.emit(strat, 'DebtSettlerTransfer')
+
+    expect(await ageur.balanceOf(treasury.address)).to.be.above(tBalance)
+    expect(await ageur.balanceOf(debtSettler.address)).to.be.above(dBalance)
+
+    await expect(strat.harvest()).to.emit(
+      strat, 'Harvested'
+    ).withArgs(
+      ageur.address, 0
+    ).to.not.emit(
+      strat, 'PerformanceFee'
+    ).to.not.emit(strat, 'DebtSettlerTransfer')
+
+    await expect(strat.harvest()).to.emit(
+      strat, 'Harvested'
+    ).withArgs(
+      ageur.address, 0
+    ).to.not.emit(
+      strat, 'PerformanceFee'
+    ).to.not.emit(strat, 'DebtSettlerTransfer')
+
+    // balance Of pool shouldn't change after pool ends
+    expect(await strat.balanceOfPool()).to.be.equal(balanceOfPool)
+    expect(await strat.balance()).to.be.equal(balance)
+
+    // withdraw 95 ageur in shares
+    const toWithdraw = (
+      (await controller.totalSupply()).mul(95e18 + '').div(
+        await controller.balance()
+      )
+    )
+
+    await waitFor(cPool.connect(bob)['withdraw(uint256)'](toWithdraw))
+
+    expect(await ageur.balanceOf(bob.address)).to.within(
+      94.9e18 + '', 95e18 + '' // 95 - 0.1% withdrawFee
+    )
+    // After pool is expired the agEUR should be kept in the strat
+    expect(await ageur.balanceOf(strat.address)).to.above(0)
+
+    await waitFor(cPool.connect(bob).withdrawAll())
+    expect(await ageur.balanceOf(bob.address)).to.above(
+      99.8e18 + ''
+    )
+
+    expect(await ageur.balanceOf(strat.address)).to.be.equal(0)
+    expect(await agden.balanceOf(strat.address)).to.be.equal(0)
+
+    const agcrv = await ethers.getContractAt('IERC20Metadata', '0x81212149b983602474fcD0943E202f38b38d7484')
+    expect(await agcrv.balanceOf(strat.address)).to.be.equal(0)
+  })
+
   it('Deposit and change strategy', async function () {
     await setCustomBalanceFor(ageur.address, bob.address, '100', 51)
     expect(await ageur.balanceOf(strat.address)).to.be.equal(0)

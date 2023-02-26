@@ -17,7 +17,6 @@ interface ISolidlyGauge {
 }
 
 contract SolidlyLPStrat is StratAbs {
-    using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;
 
     ISolidlyGauge public immutable gauge;
@@ -28,8 +27,6 @@ contract SolidlyLPStrat is StratAbs {
     bool public immutable stable;
 
     ISwapper public swapper;
-
-    uint public liquidityToleration = 200; // 2%
 
     mapping(address => ISolidlyRouter.route[]) public rewardToWantSolidlyRoute;
 
@@ -67,19 +64,12 @@ contract SolidlyLPStrat is StratAbs {
         swapper = _swapper;
     }
 
-    function setLiquidityToleration(uint _liquidityToleration) external onlyAdmin {
-        require(_liquidityToleration != liquidityToleration, "Same toleration");
-        require(_liquidityToleration <= RATIO_PRECISION, "Toleration too big!");
-
-        liquidityToleration = _liquidityToleration;
-    }
-
     function balanceOfPool() public view override returns (uint) {
         return gauge.balanceOf(address(this));
     }
 
     function balanceOfPoolInWant() public view override returns (uint) {
-        return _liquidityInWant(balanceOfPool());
+        return _balanceOfPoolToWant(balanceOfPool());
     }
 
     function setRewardToWantSolidlyRoute(address _reward, ISolidlyRouter.route[] calldata _routes) external onlyAdmin {
@@ -203,8 +193,8 @@ contract SolidlyLPStrat is StratAbs {
             stable,
             _amount0,
             _amount1,
-            _amount0 * (RATIO_PRECISION - liquidityToleration) / RATIO_PRECISION,
-            _amount1 * (RATIO_PRECISION - liquidityToleration) / RATIO_PRECISION,
+            _amount0 * (RATIO_PRECISION - poolMinVirtualPrice) / RATIO_PRECISION,
+            _amount1 * (RATIO_PRECISION - poolMinVirtualPrice) / RATIO_PRECISION,
             address(this),
             block.timestamp + 60
         );
@@ -234,8 +224,8 @@ contract SolidlyLPStrat is StratAbs {
             token1,
             stable,
             _liquidity,
-            _amount0Min * (RATIO_PRECISION - liquidityToleration) / RATIO_PRECISION,
-            _amount1Min * (RATIO_PRECISION - liquidityToleration) / RATIO_PRECISION,
+            _amount0Min * (RATIO_PRECISION - poolMinVirtualPrice) / RATIO_PRECISION,
+            _amount1Min * (RATIO_PRECISION - poolMinVirtualPrice) / RATIO_PRECISION,
             address(this),
             block.timestamp + 60
         );
@@ -251,11 +241,11 @@ contract SolidlyLPStrat is StratAbs {
         _removeAllowance(token1, address(swapper));
     }
 
-    function _withdrawFromPool(uint _liquidity) internal {
+    function _withdrawFromPool(uint _liquidity) internal override {
         gauge.withdraw(_liquidity);
     }
 
-    function _liquidityInWant(uint _liquidity) internal view returns (uint) {
+    function _balanceOfPoolToWant(uint _liquidity) internal override view returns (uint) {
         if (_liquidity <= 0) { return 0; }
 
         return swapper.lpInWant(_liquidity);
@@ -267,12 +257,12 @@ contract SolidlyLPStrat is StratAbs {
     }
 
     function _approveToken(address _token, address _dst, uint _amount) internal {
-        IERC20(_token).safeApprove(_dst, _amount);
+        IERC20Metadata(_token).safeApprove(_dst, _amount);
     }
 
     function _removeAllowance(address _token, address _dst) internal {
-        if (IERC20(_token).allowance(address(this), _dst) > 0) {
-            IERC20(_token).safeApprove(_dst, 0);
+        if (IERC20Metadata(_token).allowance(address(this), _dst) > 0) {
+            IERC20Metadata(_token).safeApprove(_dst, 0);
         }
     }
 }

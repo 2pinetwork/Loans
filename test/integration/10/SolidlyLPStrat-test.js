@@ -52,6 +52,7 @@ describe('Solidly LP Strat on WETH', function () {
 
       await Promise.all([
         waitFor(strategy.setMaxPriceOffset(86400)),
+        waitFor(strategy.setPoolMinVirtualPrice(200)), // 2%
         waitFor(strategy.setPoolSlippageRatio(200)), // 2%
         waitFor(strategy.setSwapSlippageRatio(200)), // 2%
         waitFor(strategy.setPriceFeed(WETH.address, ethFeed.address)),
@@ -339,6 +340,7 @@ describe('Solidly LP Strat on USDC', function () {
 
       await Promise.all([
         waitFor(strategy.setMaxPriceOffset(86400)),
+        waitFor(strategy.setPoolMinVirtualPrice(200)), // 2%
         waitFor(strategy.setPoolSlippageRatio(200)), // 2%
         waitFor(strategy.setSwapSlippageRatio(200)), // 2%
         waitFor(strategy.setPriceFeed(USDC.address, usdcFeed.address)),

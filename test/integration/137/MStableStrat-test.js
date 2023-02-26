@@ -498,6 +498,73 @@ describe('mStable Strat with DAI', function () {
     )
   })
 
+  it('harvest with debtSettler', async function () {
+    const newBalance = ethers.utils.parseUnits('100000', 18) // 100000 DAI
+    await setCustomBalanceFor(DAI.address, bob.address, newBalance)
+
+    const dueDate     = (await ethers.provider.getBlock()).timestamp + (365 * 24 * 60 * 60)
+    const lPool       = await deploy('LiquidityPool', cPool.piGlobal(), DAI.address, dueDate)
+    const debtSettler = await deploy('DebtSettler', lPool.address)
+
+    await waitFor(strat.setDebtSettler(debtSettler.address))
+    await waitFor(strat.setTreasury(treasury.address))
+
+    expect(await DAI.balanceOf(treasury.address)).to.be.equal(0)
+    expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
+    expect(await DAI.balanceOf(debtSettler.address)).to.be.equal(0)
+    expect(await REWARD_TOKEN.balanceOf(strat.address)).to.be.equal(0)
+
+    await waitFor(DAI.connect(bob).approve(cPool.address, newBalance))
+    await waitFor(cPool.connect(bob)['deposit(uint256)'](newBalance))
+
+    expect(await DAI.balanceOf(controller.address)).to.be.equal(0)
+    expect(await DAI.balanceOf(strat.address)).to.be.equal(0)
+    expect(await REWARD_TOKEN.balanceOf(strat.address)).to.be.equal(0)
+
+    const balanceOfPool = await strat.balanceOfPool()
+    const balance = await strat.balance()
+
+    await changeExchangeRate()
+
+    await mine(100)
+
+    await expect(strat.harvest()
+    ).to.emit(strat, 'PerformanceFee'
+    ).to.emit(strat, 'DebtSettlerTransfer'
+    ).to.emit(strat, 'Harvested')
+
+    expect(await DAI.balanceOf(treasury.address)).to.be.above(0)
+    expect(await DAI.balanceOf(debtSettler.address)).to.be.above(0)
+
+    // Balance of pool shouldn't change
+    expect(await strat.balanceOfPool()).to.be.equal(balanceOfPool)
+    // Balance should keep "near"
+    expect(await strat.balance()).to.be.within(
+      balance, balance.mul(1000001).div(1000000)
+    )
+
+    // withdraw 9500 DAI in shares
+    const toWithdraw = (
+      (await controller.totalSupply()).mul(ethers.utils.parseUnits('95000', 18)).div(
+        await controller.balance()
+      )
+    )
+
+    await waitFor(cPool.connect(bob)['withdraw(uint256)'](toWithdraw))
+
+    expect(await DAI.balanceOf(bob.address)).to.within(
+      ethers.utils.parseUnits('94900', 18), ethers.utils.parseUnits('95000', 18) // 9500 - 0.1% withdrawFee
+    )
+    expect(await DAI.balanceOf(strat.address)).to.equal(0)
+    expect(await REWARD_TOKEN.balanceOf(strat.address)).to.be.equal(0)
+
+    await waitFor(cPool.connect(bob).withdrawAll())
+    expect(await DAI.balanceOf(bob.address)).to.within(
+      ethers.utils.parseUnits('99800', 18), // between 0.1%
+      ethers.utils.parseUnits('100100', 18)
+    )
+  })
+
   it('Controller.setStrategy works', async function () {
     const newBalance = ethers.BigNumber.from('' + 1e18).mul(100000) // 100000 DAI
     await setCustomBalanceFor(DAI.address, bob.address, newBalance)

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.17;
 
 import "./StratAbs.sol";
@@ -22,29 +21,6 @@ contract MStableStrat is StratAbs {
 
     function identifier() external view returns (string memory) {
         return string(abi.encodePacked(want.symbol(), "@mStable#1.0.0"));
-    }
-
-    function harvest() public nonReentrant override {
-        uint _before = wantBalance();
-
-        _claimRewards();
-        _swapRewards();
-
-        uint harvested = wantBalance() - _before;
-
-        // Charge fees for the swapped rewards
-        _chargeFees(harvested);
-
-        // Charge performance fee for the deposits yield
-        _beforeMovement();
-
-        // re-deposit
-        if (!paused()) { _deposit(); }
-
-        // Update lastBalance for the next movement
-        _afterMovement();
-
-        emit Harvested(address(want), harvested);
     }
 
     function _deposit() internal override {
@@ -94,7 +70,7 @@ contract MStableStrat is StratAbs {
         return wantBalance() - wantBal;
     }
 
-    function _withdrawFromPool(uint poolTokenAmount) internal {
+    function _withdrawFromPool(uint poolTokenAmount) internal override {
         // Remove staked from vault
         IMVault(VAULT).withdraw(poolTokenAmount);
 
@@ -155,33 +131,11 @@ contract MStableStrat is StratAbs {
     // We use balanceOfPoolInMUsd instead of balance to prevent
     // `lastBalance` be less than the last harvest with the same deposits.
     // balanceOfPool can't be used because it doesn't change over time
-    function _beforeMovement() internal override {
-        uint _currentPoolBalance = _balanceOfPoolInMUsd();
-        uint _currentBalance = wantBalance();
-
-        if (_currentPoolBalance > lastBalance) {
-            uint perfFee = ((_currentPoolBalance - lastBalance) * performanceFee) / RATIO_PRECISION;
-
-            // Prevent to raise when perfFee is super small
-            if (perfFee > 0 && _musdAmountToWant(perfFee) > 0) {
-                _withdrawFromPool(_musdAmountToImusd(perfFee));
-
-                uint feeInWant = wantBalance() - _currentBalance;
-
-                if (feeInWant > 0) {
-                    want.safeTransfer(treasury, feeInWant);
-                    emit PerformanceFee(feeInWant);
-                }
-            }
-        }
-    }
-
-    // Update new `lastBalance` for the next charge
-    function _afterMovement() internal override {
-        lastBalance = _balanceOfPoolInMUsd();
-    }
-
-    function _balanceOfPoolInMUsd() internal view returns (uint){
+    function _balanceOfPoolForMovement() internal override view returns (uint){
         return _imusdAmountToMusd(balanceOfPool());
+    }
+
+    function _balanceOfPoolToWant(uint _amount) internal override view returns (uint) {
+        return _musdAmountToWant(_imusdAmountToMusd(_amount));
     }
 }
