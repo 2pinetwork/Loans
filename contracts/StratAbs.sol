@@ -115,6 +115,7 @@ abstract contract StratAbs is Swappable, Pausable {
     function setPoolMinVirtualPrice(uint _ratio) public onlyAdmin {
         require(_ratio != poolMinVirtualPrice, "Same ratio");
         require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
+        require(_ratio + poolSlippageRatio <= RATIO_PRECISION, "PMVP+PSR > 100%");
 
         poolMinVirtualPrice = _ratio;
     }
@@ -122,6 +123,7 @@ abstract contract StratAbs is Swappable, Pausable {
     function setPoolSlippageRatio(uint _ratio) public onlyAdmin {
         require(_ratio != poolSlippageRatio, "Same ratio");
         require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
+        require(_ratio + poolMinVirtualPrice <= RATIO_PRECISION, "PMVP+PSR > 100%");
 
         poolSlippageRatio = _ratio;
     }
