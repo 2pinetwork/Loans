@@ -20,6 +20,9 @@ interface IUniswapV3 {
     function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
+/*
+ * @title MetaCurveStrat
+ */
 contract MetaCurveStrat is StratAbs {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;

@@ -4,6 +4,11 @@ pragma solidity 0.8.17;
 import "./StratAbs.sol";
 import "../interfaces/IMStable.sol";
 
+/*
+ * @title MStableStrat
+ *
+ * @notice It only works on Polygon
+ */
 contract MStableStrat is StratAbs {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;

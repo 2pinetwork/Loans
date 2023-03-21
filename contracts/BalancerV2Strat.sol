@@ -5,6 +5,11 @@ pragma solidity 0.8.17;
 import "./StratAbs.sol";
 import "../interfaces/IBalancer.sol";
 
+/*
+ * @title BalancerV2Strat
+ *
+ * @notice It only works on Polygon
+ */
 contract BalancerV2Strat is StratAbs {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;
