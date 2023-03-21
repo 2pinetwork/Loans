@@ -102,6 +102,9 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     function setPerformanceFee(uint _fee) external onlyAdmin nonReentrant {
+        // Call harvest() before modifying the performance fee
+        harvest();
+
         require(_fee != performanceFee, "Same fee");
         require(_fee <= MAX_PERFORMANCE_FEE, "Can't be greater than max");
         emit NewPerformanceFee(performanceFee, _fee);
