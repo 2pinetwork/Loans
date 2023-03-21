@@ -56,9 +56,9 @@ abstract contract StratAbs is Swappable, Pausable {
 
     constructor(IERC20Metadata _want, address _controller, address _exchange, address _treasury) {
         _checkIERC20(_want, "Want !ZeroAddress");
-        require(_controller != address(0), "Controller !ZeroAddress");
-        require(_exchange != address(0), "Exchange !ZeroAddress");
-        require(_treasury != address(0), "Treasury !ZeroAddress");
+        if (_controller == address(0)) revert ZeroAddress();
+        if (_exchange == address(0)) revert ZeroAddress();
+        if (_treasury == address(0)) revert ZeroAddress();
 
         want = _want;
         controller = _controller;
@@ -80,6 +80,15 @@ abstract contract StratAbs is Swappable, Pausable {
     event DebtSettlerChanged(address _old, address _new);
     event DebtSettlerTransfer(uint _amount);
 
+    /**
+     * @dev Emitted when a ratio variable reached 100%
+     */
+    error MaxRatioReached();
+    /**
+     * @dev Emitted when an expected valid address is the zero address
+     */
+    error ZeroAddress();
+
     modifier onlyController() {
         require(msg.sender == controller, "Not from controller");
         _;
@@ -87,7 +96,7 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setTreasury(address _treasury) external onlyAdmin nonReentrant {
         require(_treasury != treasury, "Same address");
-        require(_treasury != address(0), "!ZeroAddress");
+        if (_treasury == address(0)) revert ZeroAddress();
         emit NewTreasury(treasury, _treasury);
 
         treasury = _treasury;
@@ -95,7 +104,7 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setExchange(address _exchange) external onlyAdmin nonReentrant {
         require(_exchange != exchange, "Same address");
-        require(_exchange != address(0), "!ZeroAddress");
+        if (_exchange == address(0)) revert ZeroAddress();
         emit NewExchange(exchange, _exchange);
 
         exchange = _exchange;
@@ -114,16 +123,14 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setPoolMinVirtualPrice(uint _ratio) public onlyAdmin {
         require(_ratio != poolMinVirtualPrice, "Same ratio");
-        require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
-        require(_ratio + poolSlippageRatio <= RATIO_PRECISION, "PMVP+PSR > 100%");
+        if (_ratio + poolSlippageRatio > RATIO_PRECISION) revert MaxRatioReached();
 
         poolMinVirtualPrice = _ratio;
     }
 
     function setPoolSlippageRatio(uint _ratio) public onlyAdmin {
         require(_ratio != poolSlippageRatio, "Same ratio");
-        require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
-        require(_ratio + poolMinVirtualPrice <= RATIO_PRECISION, "PMVP+PSR > 100%");
+        if (_ratio + poolMinVirtualPrice > RATIO_PRECISION) revert MaxRatioReached();
 
         poolSlippageRatio = _ratio;
     }
@@ -136,7 +143,7 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     function setRewardToWantRoute(address _reward, address[] calldata _route) external onlyAdmin {
-        require(_reward != address(0), "!ZeroAddress");
+        if (_reward == address(0)) revert ZeroAddress();
         require(_route[0] == _reward, "First route isn't reward");
         require(_route[_route.length - 1] == address(want), "Last route isn't want token");
 
@@ -162,7 +169,7 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     function setEqualizer(address _equalizer) external onlyAdmin {
-        require(_equalizer != address(0), "!ZeroAddress");
+        if (_equalizer == address(0)) revert ZeroAddress();
         require(_equalizer != equalizer, "same address");
 
         equalizer = _equalizer;
@@ -170,7 +177,7 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setDebtSettler(address _ds) external onlyAdmin nonReentrant {
         require(_ds != debtSettler, "Same address");
-        require(_ds != address(0), "!ZeroAddress");
+        if (_ds == address(0)) revert ZeroAddress();
 
         emit DebtSettlerChanged(debtSettler, _ds);
 
