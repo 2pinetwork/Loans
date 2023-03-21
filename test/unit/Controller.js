@@ -320,11 +320,18 @@ describe('Controller', async function () {
 
       await cToken.setStrategy(strategy.address)
 
-      await token.mint(bob.address, 1)
-      await token.connect(bob).approve(cPool.address, 1)
+      await token.mint(bob.address, ethers.utils.parseUnits('0.3', 18))
+      await token.connect(bob).approve(cPool.address, ethers.utils.parseUnits('0.3', 18))
 
       expect(await token.balanceOf(cToken.address)).to.be.equal(0)
-      await expect(cPool.connect(bob)['deposit(uint256)'](1)).to.revertedWithCustomError(cToken, 'MinDepositAmountNotReached')
+      await cPool.connect(bob)['deposit(uint256)'](1)
+      // It should not deposit on strategy yet
+      expect(await token.balanceOf(cToken.address)).to.be.equal(1)
+
+      // Deposit another 0.1 tokens, should exceed the threshold and deposit on strategy
+      await cPool.connect(bob)['deposit(uint256)'](ethers.utils.parseUnits('0.2', 18))
+      expect(await token.balanceOf(cToken.address)).to.be.equal(0)
+      expect(await token.balanceOf(strategy.address)).to.be.equal(ethers.utils.parseUnits('0.200000000000000001', 18))
     })
   })
 
