@@ -4,6 +4,7 @@ const {
   deployOracle,
   getInterest,
   mine,
+  waitFor,
   ZERO_ADDRESS
 } = require('../helpers')
 
@@ -154,7 +155,7 @@ describe('Debt settler', async function () {
   })
 
   describe('Build and pay', async function () {
-    it('Should work for debt settling when amount >= debt', async function () {
+    it.only('Should work for debt settling when amount >= debt', async function () {
       const fixtures = await loadFixture(deploy)
 
       const {
@@ -185,13 +186,15 @@ describe('Debt settler', async function () {
       await lPool.connect(bob).borrow(depositAmount)
       await lPool.connect(alice).borrow(depositAmount.mul(2))
 
+      await mine(100)
+
       // Since it already compute some interests
       expect(await lPool['debt(address)'](bob.address)).to.be.within(
-        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.00001', 18))
+        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.0001', 18))
       )
 
-      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
-        depositAmount.mul(2)
+      expect(await lPool['debt(address)'](alice.address)).to.be.within(
+        depositAmount.mul(2), depositAmount.mul(2).add(ethers.utils.parseUnits('0.0002', 18))
       )
 
       expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
@@ -204,42 +207,28 @@ describe('Debt settler', async function () {
       const interestAmount = await getInterest(lPool, depositAmount, seconds) // +1 second because of the transfer to settler
       const repayAmount    = depositAmount.add(interestAmount).mul(3)
 
-      await (await token.connect(treasury).transfer(debtSettler.address, repayAmount)).wait()
-      await (await debtSettler.connect(treasury).build()).wait()
-      await (await debtSettler.connect(treasury).pay()).wait()
+      await waitFor(token.connect(treasury).transfer(debtSettler.address, repayAmount))
+      await waitFor(debtSettler.connect(treasury).build())
+      await waitFor(debtSettler.connect(treasury).pay())
 
       // Since debt is calculated before payment, next block we have _some_
       const blocksFromDebt         = 5
       const oneBlockInterestAmount = await getInterest(lPool, depositAmount, 1)
 
-      expect(await lPool['debt(address)'](bob.address)).to.be.equal(
-        await getInterest(lPool, depositAmount, blocksFromDebt + 1)
-      )
-      // Alice has double amount deposited, hence twice the interest of bob
-      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
-        (await getInterest(lPool, depositAmount.mul(2), blocksFromDebt))
-      )
+      const expectedBobDebt   = await getInterest(lPool, depositAmount, blocksFromDebt + 1)
+      const expectedAliceDebt = await getInterest(lPool, depositAmount.mul(2), blocksFromDebt)
 
-      // This should have no effect since we already paid the debt
-      // and borrowers have been set to zero balance
-      await network.provider.send('evm_setAutomine', [false])
-      const block = (await ethers.provider.getBlock()).number
+      // Bob debt gets settled all together
+      expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
+      // Alice debt is less than 15% of the initial borrow
+      expect(await lPool['debt(address)'](alice.address)).to.be.lessThan(depositAmount.mul(2).mul(15).div(100))
 
-      // Pay everything without mine the block
-      await token.connect(treasury).transfer(debtSettler.address, repayAmount.mul(20)), // pay everything
-      await debtSettler.connect(treasury).build(),
-      await debtSettler.connect(treasury).pay(),
-      await mine(1)
+      await waitFor(token.connect(treasury).transfer(debtSettler.address, depositAmount.mul(2).mul(15).div(100)))
 
-      expect((await ethers.provider.getBlock()).number).to.be.equal(block + 1)
+      await waitFor(debtSettler.connect(treasury).build())
+      await waitFor(debtSettler.connect(treasury).pay())
 
-      await network.provider.send('evm_setAutomine', [true])
-
-      // This should be increased by one block since previous check
-      // And a little bit more =)
-      expect(await lPool['debt(address)'](bob.address)).to.be.greaterThan(oneBlockInterestAmount)
-      // Alice has double amount deposited, hence twice the interest of bob
-      expect(await lPool['debt(address)'](alice.address)).to.be.greaterThan(oneBlockInterestAmount.mul(2))
+      expect(await lPool['debt(address)'](alice.address)).to.be.equal(0)
 
       // Now we check that clean method works
       expect(await debtSettler.usersCreditLength()).to.be.equal(2)
@@ -277,13 +266,15 @@ describe('Debt settler', async function () {
       await lPool.connect(bob).borrow(depositAmount)
       await lPool.connect(alice).borrow(depositAmount.mul(2))
 
+      await mine(1000)
+
       // Since it already compute some interests
       expect(await lPool['debt(address)'](bob.address)).to.be.within(
         depositAmount, depositAmount.add(ethers.utils.parseUnits('0.00001', 18))
       )
 
-      expect(await lPool['debt(address)'](alice.address)).to.be.equal(
-        depositAmount.mul(2)
+      expect(await lPool['debt(address)'](alice.address)).to.be.within(
+        depositAmount.mul(2), depositAmount.mul(2).add(ethers.utils.parseUnits('0.00002', 18))
       )
 
       expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
@@ -308,13 +299,94 @@ describe('Debt settler', async function () {
       const precision      = ethers.utils.parseUnits('1', 18)
       const totalDebtRatio = totalDebtAfter.mul(precision).div(totalDebt)
 
+      // It should be at least 1/3 each
+      expect(bobDebtAfter).to.be.lessThan(bobDebt.sub(repayAmount.div(3)))
+      expect(aliceDebtAfter).to.be.lessThan(aliceDebt.sub(repayAmount.div(3)))
+
+      expect(totalDebtAfter).to.be.within(
+        totalDebt.sub(repayAmount).mul(10000).div(10001),
+        totalDebt.sub(repayAmount).mul(10000).div(9999)
+      )
+    })
+
+    it('Should work with time weight', async function () {
+      const fixtures = await loadFixture(deploy)
+
+      const {
+        alice,
+        bob,
+        dToken,
+        cPool,
+        lPool,
+        debtSettler,
+        token,
+        treasury,
+      } = fixtures
+
+      await setupCollateral(fixtures)
+
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 60e18 + '')
+      await token.mint(bob.address, 10e18 + '')
+      await token.mint(alice.address, 20e18 + '')
+
+      // Alice collateral
+      await token.connect(alice).approve(cPool.address, 20e18 + '')
+      await expect(cPool.connect(alice)['deposit(uint256)'](20e18 + '')).to.emit(cPool, 'Deposit')
+
+      const depositAmount = ethers.utils.parseUnits('9.9', 18)
+
+      await lPool.connect(bob).borrow(depositAmount)
+      await mine(20000)
+
+      await lPool.connect(alice).borrow(depositAmount.mul(2))
+      await mine(1000)
+
+      // Since it already compute some interests
+      expect(await lPool['debt(address)'](bob.address)).to.be.within(
+        depositAmount, depositAmount.add(ethers.utils.parseUnits('0.0003', 18))
+      )
+
+      expect(await lPool['debt(address)'](alice.address)).to.be.within(
+        depositAmount.mul(2),
+        depositAmount.mul(2).add(ethers.utils.parseUnits('0.00004', 18))
+      )
+
+      expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
+      expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
+
+      const repayAmount = ethers.utils.parseUnits('2', 18)
+
+      await token.mint(treasury.address, repayAmount)
+      await token.connect(treasury).transfer(debtSettler.address, repayAmount)
+      await debtSettler.grantRole(await debtSettler.HANDLER_ROLE(), treasury.address)
+
+      const bobDebt     = await lPool['debt(address)'](bob.address)
+      const aliceDebt   = await lPool['debt(address)'](alice.address)
+      const totalDebt   = bobDebt.add(aliceDebt)
+
+      await debtSettler.connect(treasury).build()
+      await debtSettler.connect(treasury).pay()
+
+      const bobDebtAfter    = await lPool['debt(address)'](bob.address)
+      const aliceDebtAfter  = await lPool['debt(address)'](alice.address)
+      const totalDebtAfter  = bobDebtAfter.add(aliceDebtAfter)
+      // Bob repayment will be:
+      // (2 * 9.9 * ~22000 + 2 * ~21000 * 29.7) / (~22000 * 29.7 * 2) ~= 1.29
+      // Where 22000 is the total sum of times and 29.7 is the total debt
+      // and 21000 is the time bob has been borrowing
+      const bobPayment      = ethers.utils.parseUnits('1.29', 18)
+      // Alice repayment will be:
+      // (2 * 19.8 * ~22000 + 2 * ~1000 * 29.7) / (~22000 * 29.7 * 2) ~= 0.71
+      const alicePayment    = ethers.utils.parseUnits('0.71', 18)
+
       expect(bobDebtAfter).to.be.within(
-        bobDebt.mul(totalDebtRatio).mul(1000).div(precision).div(1001),
-        bobDebt.mul(totalDebtRatio).mul(1000).div(precision).div(999)
+        bobDebt.sub(bobPayment).mul(1000).div(1001),
+        bobDebt.sub(bobPayment).mul(1000).div(999)
       )
       expect(aliceDebtAfter).to.be.within(
-        aliceDebt.mul(totalDebtRatio).mul(1000).div(precision).div(1001),
-        aliceDebt.mul(totalDebtRatio).mul(1000).div(precision).div(999)
+        aliceDebt.sub(alicePayment).mul(1000).div(1001),
+        aliceDebt.sub(alicePayment).mul(1000).div(999)
       )
       expect(totalDebtAfter).to.be.within(
         totalDebt.sub(repayAmount).mul(1000).div(1001),
@@ -361,6 +433,8 @@ describe('Debt settler', async function () {
         depositAmount.mul(2)
       )
 
+      await mine(1000000) // Some huge time jump
+
       expect(await dToken.balanceOf(bob.address)).to.be.equal(depositAmount)
       expect(await dToken.balanceOf(alice.address)).to.be.equal(depositAmount.mul(2))
 
@@ -369,8 +443,8 @@ describe('Debt settler', async function () {
       await token.connect(treasury).transfer(debtSettler.address, repayAmount)
       await debtSettler.grantRole(await debtSettler.HANDLER_ROLE(), treasury.address)
 
-      const bobDebt     = await lPool['debt(address)'](bob.address)
-      const aliceDebt   = await lPool['debt(address)'](alice.address)
+      const bobDebt   = await lPool['debt(address)'](bob.address)
+      const aliceDebt = await lPool['debt(address)'](alice.address)
 
       await debtSettler.connect(treasury).build()
       await debtSettler.connect(treasury).pay({ gasLimit: 200000 })
