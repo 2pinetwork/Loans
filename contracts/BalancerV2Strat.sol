@@ -137,7 +137,7 @@ contract BalancerV2Strat is StratAbs {
             if (expected > _balanceOfPool) { expected = _balanceOfPool; }
 
             //Unstake
-            IBalancerGauge(gauge).withdraw(expected);
+            _withdrawFromPool(expected);
             require(balanceOfVaultPool() >= expected, "Gauge gave less than expected");
 
             bytes memory userData = abi.encode(BPT_IN_FOR_EXACT_TOKENS_OUT, amounts, expected);
@@ -168,7 +168,8 @@ contract BalancerV2Strat is StratAbs {
 
         //Unstake
         uint stakedBalance = balanceOfPool();
-        IBalancerGauge(gauge).withdraw(stakedBalance);
+
+        _withdrawFromPool(stakedBalance);
         require(balanceOfVaultPool() >= stakedBalance, "Gauge gave less than expected");
 
         uint index = 0;
@@ -221,7 +222,11 @@ contract BalancerV2Strat is StratAbs {
     }
 
     function balanceOfPoolInWant() public view override returns (uint) {
-        return balanceOfPool() * _pricePerShare() / WANT_MISSING_PRECISION / SHARES_PRECISION;
+        return _balanceOfPoolToWant(balanceOfPool());
+    }
+
+    function _balanceOfPoolToWant(uint _shares) internal override view returns (uint) {
+        return _shares * _pricePerShare() / WANT_MISSING_PRECISION / SHARES_PRECISION;
     }
 
     function _pricePerShare() internal view returns (uint) {
@@ -246,5 +251,10 @@ contract BalancerV2Strat is StratAbs {
             // assign index of want
             if (address(tokens[i]) == address(want)) { break; }
         }
+    }
+
+    function _withdrawFromPool(uint _amount) internal override {
+        // Withdraw from gauge
+        IBalancerGauge(gauge).withdraw(_amount);
     }
 }

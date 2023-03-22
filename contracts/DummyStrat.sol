@@ -41,4 +41,14 @@ contract DummyStrat is StratAbs {
     function balanceOfPoolInWant() public pure override returns (uint) {
         return 0;
     }
+
+    function _balanceOfPoolToWant(uint) internal pure override returns (uint) {
+        return 0;
+    }
+
+    function _claimRewards() internal override {
+    }
+
+    function _withdrawFromPool(uint) internal override {
+    }
 }

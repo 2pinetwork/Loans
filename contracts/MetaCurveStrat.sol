@@ -203,6 +203,10 @@ contract MetaCurveStrat is StratAbs {
         if (_claim) { gauge.claim_rewards(); }
     }
 
+    function _balanceOfPoolToWant(uint _amount) internal view override returns (uint) {
+        return _calcWithdrawOneCoin(_amount);
+    }
+
     function _minWantToWantCrv(uint _amount) internal view returns (uint) {
         // Based on virtual_price (poolMinVirtualPrice) and poolSlippageRatio
         // the expected amount is represented with 18 decimals as crvWant token

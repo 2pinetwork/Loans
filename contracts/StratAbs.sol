@@ -315,24 +315,16 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
 
-    function _deposit() internal virtual {
-        // revert("Should be implemented");
-    }
+    function _deposit() internal virtual;
 
-    function _withdraw(uint) internal virtual returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _withdraw(uint) internal virtual returns (uint);
 
-    function _withdrawAll() internal virtual returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _withdrawAll() internal virtual returns (uint);
 
-    function _claimRewards() internal virtual {
-        // revert("Should be implemented");
-    }
+    function _claimRewards() internal virtual;
 
     function _swapRewards() internal virtual {
-        // should be implemented
+        // could be re-implemented
         for (uint i = 0; i < rewardTokens.length; i++) {
             address rewardToken = rewardTokens[i];
             uint _balance = IERC20Metadata(rewardToken).balanceOf(address(this));
@@ -401,13 +393,9 @@ abstract contract StratAbs is Swappable, Pausable {
         return wantBalance() + balanceOfPoolInWant();
     }
 
-    function balanceOfPool() public view virtual returns (uint) {
-        // should be implemented
-    }
+    function balanceOfPool() public view virtual returns (uint);
 
-    function balanceOfPoolInWant() public view virtual returns (uint) {
-        // should be implemented
-    }
+    function balanceOfPoolInWant() public view virtual returns (uint);
 
     // called as part of strat migration. Sends all the available funds back to the vault.
     function retireStrat() external onlyController {
@@ -439,13 +427,9 @@ abstract contract StratAbs is Swappable, Pausable {
         _deposit();
     }
 
-    function _withdrawFromPool(uint) internal virtual {
-        // revert("Should be implemented");
-    }
+    function _withdrawFromPool(uint) internal virtual;
 
-    function _balanceOfPoolToWant(uint) internal virtual view returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _balanceOfPoolToWant(uint) internal virtual view returns (uint);
 
     function _balanceOfPoolForMovement() internal virtual view returns (uint){
         return balanceOfPool();
