@@ -16,6 +16,9 @@ interface ISolidlyGauge {
     function tokenIds(address token) external view returns (uint);
 }
 
+/*
+ * @title SolidlyLPStrat
+ */
 contract SolidlyLPStrat is StratAbs {
     using SafeERC20 for IERC20Metadata;
 

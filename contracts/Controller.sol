@@ -74,11 +74,6 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
     error StrategyPaused();
 
     /**
-     * @dev Emitted when the deposited amount is less than the minimum allowed
-     */
-    error MinDepositAmountNotReached();
-
-    /**
      * @dev Emitted when for some reason the price per share is less than the thredhold
      */
     error LowSharePrice();
@@ -505,14 +500,13 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         if (! _withStrat()) return;
         // If the line before didn't break the flow, strategy is present
         if (strategy.paused()) revert StrategyPaused();
-
         uint _amount = assetBalance();
 
-        if (_amount < minStrategyDepositAmount) revert MinDepositAmountNotReached();
-
-        asset.safeTransfer(address(strategy), _amount);
-
-        strategy.deposit();
+        // Only transfer and call strategy if the deposit threshold is exceeded
+        if (_amount >= minStrategyDepositAmount) {
+            asset.safeTransfer(address(strategy), _amount);
+            strategy.deposit();
+        }
     }
 
     function _checkDepositLimit(address _user, uint _amount) internal view {

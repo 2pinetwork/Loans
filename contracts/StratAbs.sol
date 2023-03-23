@@ -56,9 +56,9 @@ abstract contract StratAbs is Swappable, Pausable {
 
     constructor(IERC20Metadata _want, address _controller, address _exchange, address _treasury) {
         _checkIERC20(_want, "Want !ZeroAddress");
-        require(_controller != address(0), "Controller !ZeroAddress");
-        require(_exchange != address(0), "Exchange !ZeroAddress");
-        require(_treasury != address(0), "Treasury !ZeroAddress");
+        if (_controller == address(0)) revert ZeroAddress();
+        if (_exchange == address(0)) revert ZeroAddress();
+        if (_treasury == address(0)) revert ZeroAddress();
 
         want = _want;
         controller = _controller;
@@ -80,6 +80,15 @@ abstract contract StratAbs is Swappable, Pausable {
     event DebtSettlerChanged(address _old, address _new);
     event DebtSettlerTransfer(uint _amount);
 
+    /**
+     * @dev Emitted when a ratio variable reached 100%
+     */
+    error MaxRatioReached();
+    /**
+     * @dev Emitted when an expected valid address is the zero address
+     */
+    error ZeroAddress();
+
     modifier onlyController() {
         require(msg.sender == controller, "Not from controller");
         _;
@@ -87,7 +96,7 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setTreasury(address _treasury) external onlyAdmin nonReentrant {
         require(_treasury != treasury, "Same address");
-        require(_treasury != address(0), "!ZeroAddress");
+        if (_treasury == address(0)) revert ZeroAddress();
         emit NewTreasury(treasury, _treasury);
 
         treasury = _treasury;
@@ -95,13 +104,16 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setExchange(address _exchange) external onlyAdmin nonReentrant {
         require(_exchange != exchange, "Same address");
-        require(_exchange != address(0), "!ZeroAddress");
+        if (_exchange == address(0)) revert ZeroAddress();
         emit NewExchange(exchange, _exchange);
 
         exchange = _exchange;
     }
 
     function setPerformanceFee(uint _fee) external onlyAdmin nonReentrant {
+        // Call harvest() before modifying the performance fee
+        harvest();
+
         require(_fee != performanceFee, "Same fee");
         require(_fee <= MAX_PERFORMANCE_FEE, "Can't be greater than max");
         emit NewPerformanceFee(performanceFee, _fee);
@@ -111,14 +123,14 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setPoolMinVirtualPrice(uint _ratio) public onlyAdmin {
         require(_ratio != poolMinVirtualPrice, "Same ratio");
-        require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
+        if (_ratio + poolSlippageRatio > RATIO_PRECISION) revert MaxRatioReached();
 
         poolMinVirtualPrice = _ratio;
     }
 
     function setPoolSlippageRatio(uint _ratio) public onlyAdmin {
         require(_ratio != poolSlippageRatio, "Same ratio");
-        require(_ratio <= RATIO_PRECISION, "Can't be more than 100%");
+        if (_ratio + poolMinVirtualPrice > RATIO_PRECISION) revert MaxRatioReached();
 
         poolSlippageRatio = _ratio;
     }
@@ -131,7 +143,7 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     function setRewardToWantRoute(address _reward, address[] calldata _route) external onlyAdmin {
-        require(_reward != address(0), "!ZeroAddress");
+        if (_reward == address(0)) revert ZeroAddress();
         require(_route[0] == _reward, "First route isn't reward");
         require(_route[_route.length - 1] == address(want), "Last route isn't want token");
 
@@ -157,7 +169,7 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
     function setEqualizer(address _equalizer) external onlyAdmin {
-        require(_equalizer != address(0), "!ZeroAddress");
+        if (_equalizer == address(0)) revert ZeroAddress();
         require(_equalizer != equalizer, "same address");
 
         equalizer = _equalizer;
@@ -165,7 +177,7 @@ abstract contract StratAbs is Swappable, Pausable {
 
     function setDebtSettler(address _ds) external onlyAdmin nonReentrant {
         require(_ds != debtSettler, "Same address");
-        require(_ds != address(0), "!ZeroAddress");
+        if (_ds == address(0)) revert ZeroAddress();
 
         emit DebtSettlerChanged(debtSettler, _ds);
 
@@ -303,24 +315,16 @@ abstract contract StratAbs is Swappable, Pausable {
     }
 
 
-    function _deposit() internal virtual {
-        // revert("Should be implemented");
-    }
+    function _deposit() internal virtual;
 
-    function _withdraw(uint) internal virtual returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _withdraw(uint) internal virtual returns (uint);
 
-    function _withdrawAll() internal virtual returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _withdrawAll() internal virtual returns (uint);
 
-    function _claimRewards() internal virtual {
-        // revert("Should be implemented");
-    }
+    function _claimRewards() internal virtual;
 
     function _swapRewards() internal virtual {
-        // should be implemented
+        // could be re-implemented
         for (uint i = 0; i < rewardTokens.length; i++) {
             address rewardToken = rewardTokens[i];
             uint _balance = IERC20Metadata(rewardToken).balanceOf(address(this));
@@ -389,13 +393,9 @@ abstract contract StratAbs is Swappable, Pausable {
         return wantBalance() + balanceOfPoolInWant();
     }
 
-    function balanceOfPool() public view virtual returns (uint) {
-        // should be implemented
-    }
+    function balanceOfPool() public view virtual returns (uint);
 
-    function balanceOfPoolInWant() public view virtual returns (uint) {
-        // should be implemented
-    }
+    function balanceOfPoolInWant() public view virtual returns (uint);
 
     // called as part of strat migration. Sends all the available funds back to the vault.
     function retireStrat() external onlyController {
@@ -427,13 +427,9 @@ abstract contract StratAbs is Swappable, Pausable {
         _deposit();
     }
 
-    function _withdrawFromPool(uint) internal virtual {
-        // revert("Should be implemented");
-    }
+    function _withdrawFromPool(uint) internal virtual;
 
-    function _balanceOfPoolToWant(uint) internal virtual view returns (uint) {
-        // revert("Should be implemented");
-    }
+    function _balanceOfPoolToWant(uint) internal virtual view returns (uint);
 
     function _balanceOfPoolForMovement() internal virtual view returns (uint){
         return balanceOfPool();

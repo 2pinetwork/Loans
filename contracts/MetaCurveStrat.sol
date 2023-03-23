@@ -20,6 +20,9 @@ interface IUniswapV3 {
     function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
+/*
+ * @title MetaCurveStrat
+ */
 contract MetaCurveStrat is StratAbs {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;
@@ -198,6 +201,10 @@ contract MetaCurveStrat is StratAbs {
         }
 
         if (_claim) { gauge.claim_rewards(); }
+    }
+
+    function _balanceOfPoolToWant(uint _amount) internal view override returns (uint) {
+        return _calcWithdrawOneCoin(_amount);
     }
 
     function _minWantToWantCrv(uint _amount) internal view returns (uint) {
