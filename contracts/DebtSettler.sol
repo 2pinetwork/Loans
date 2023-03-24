@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {ILPool} from "../interfaces/IPool.sol";
 import "./PiAdmin.sol";
@@ -97,7 +98,6 @@ contract DebtSettler is PiAdmin {
         if (_length == 0) return;
 
         uint _totalDebt;
-        uint _totalTimeElapsed;
 
         // will always use first the "last balance snapshot"
         uint _amount = _lastCredit;
@@ -108,36 +108,41 @@ contract DebtSettler is PiAdmin {
             _buildTimestamp = block.timestamp;
         }
 
+        if (_amount == 0) return;
+
+        uint _geometricMean;
+
         for (uint _j = 0; _j < _length; _j++) {
             (address _borrower, uint _timestamp) = _borrowers.at(_j);
 
-            _totalDebt += _debt(_borrower);
-            _totalTimeElapsed += _buildTimestamp - _timestamp;
+            if (_timestamp >= _buildTimestamp) continue; // Prevent taking care of the "newest debts"
+
+            uint _bDebt = _debt(_borrower);
+
+            if (_bDebt == 0) continue;
+
+            _totalDebt += _bDebt;
+
+            _geometricMean += Math.sqrt(_bDebt * (_buildTimestamp - _timestamp));
         }
 
         if (_totalDebt == 0) return;
-
-        if (_amount == 0) return;
-        if (_amount > _totalDebt) _amount = _lastCredit =  _totalDebt;
+        if (_amount > _totalDebt) _amount = _lastCredit = _totalDebt;
 
         uint _i = _lastIndexBuilt == 0 ? 0 : (_lastIndexBuilt + 1);
 
-        console.log("Amount: %s", _amount);
-
-        console.log("Total time elapsed: %s", _totalTimeElapsed);
-        console.log("Timestamps: %s - %s", _buildTimestamp, _lastBuildTimestamp);
-
         for (_i; _i < _length; _i++) {
             (address _borrower, uint _timestamp) = _borrowers.at(_i);
-            uint _elapsed = _buildTimestamp - _timestamp;
-            uint _credit = (_amount * _debt(_borrower) * _totalTimeElapsed + _amount * _elapsed * _totalDebt) / (_totalDebt * _totalTimeElapsed * 2);
-            (, uint _currentCredit) = _usersCredit.tryGet(_borrower);
 
-            console.log("Borrower: %s", _borrower);
-            console.log("Elapsed: %s", _elapsed);
-            console.log("Debt: %s", _debt(_borrower));
-            console.log("Credit: %s", _credit);
-            console.log("Timestamps: %s - %s", _timestamp, _lastBuildTimestamp);
+            if (_timestamp >= _buildTimestamp) continue; // Prevent taking care of the "newest debts"
+
+            uint _bDebt = _debt(_borrower);
+            uint _elapsed = _buildTimestamp - _timestamp;
+            // Aqui quizas hay que meter un *1e18
+            uint _credit = _amount * Math.sqrt(
+                _bDebt * _elapsed
+            ) / _geometricMean;
+            (, uint _currentCredit) = _usersCredit.tryGet(_borrower);
 
             // we have to accumulate each time =)
             _usersCredit.set(_borrower, _credit + _currentCredit);
@@ -147,6 +152,7 @@ contract DebtSettler is PiAdmin {
             // each loop use aprox 80k of gas
             if (gasleft() <= 100_000) {
                 _lastIndexBuilt = _i;
+                // console.log("Salio en: %s", _i);
                 return;
             }
         }
