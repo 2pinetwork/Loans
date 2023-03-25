@@ -38,10 +38,8 @@ contract DebtSettler is PiAdmin {
     bytes32 public constant HANDLER_ROLE = keccak256("HANDLER_ROLE");
 
     uint internal _buildTimestamp;
-    uint internal _lastBuildTimestamp;
 
     // build/repay indexes to keep track last position.
-    uint internal _lastIndexBuilt;
     uint internal _lastCredit;
     uint internal _lastIndexPaid;
     uint internal _waitForPay;
@@ -155,7 +153,6 @@ contract DebtSettler is PiAdmin {
             }
         }
         _lastIndexBuilt = 0; // ensure that if ends always starts from 0
-        _lastBuildTimestamp = block.timestamp;
         _waitForPay = 1;
     }
 
@@ -233,8 +230,6 @@ contract DebtSettler is PiAdmin {
      * @param _borrower The borrower address.
      */
     function addBorrower(address _borrower) external onlyPool nonReentrant {
-        if (_lastBuildTimestamp == 0) _lastBuildTimestamp = block.timestamp;
-
         _borrowers.set(_borrower, block.timestamp);
     }
 

@@ -2,7 +2,6 @@ const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers')
 
 const {
   deployOracle,
-  getInterest,
   mine,
   waitFor,
   ZERO_ADDRESS
