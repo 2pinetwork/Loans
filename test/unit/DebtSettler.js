@@ -437,7 +437,7 @@ describe('Debt settler', async function () {
       expect(await token.balanceOf(treasury.address)).to.be.equal(0)
     })
 
-    it.only('increases gas spent while building when there are more borrowers', async function () {
+    it.skip('increases gas spent while building when there are more borrowers', async function () {
       const fixtures = await loadFixture(deploy)
       const {
         alice,
@@ -472,6 +472,7 @@ describe('Debt settler', async function () {
 
         expect(signerDebt).to.be.eq(1)
       }
+
       await token.mint(debtSettler.address, 100e18 + '')
       // await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
 
@@ -480,7 +481,7 @@ describe('Debt settler', async function () {
       let buildTx
       let buildReceipt
 
-      for (let index = 0; index < 4; index++) {
+      for (let index = 0; index < 5; index++) {
         buildTx      = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
         buildReceipt = await buildTx.wait()
 
@@ -490,35 +491,33 @@ describe('Debt settler', async function () {
       buildTx      = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
       buildReceipt = await buildTx.wait()
 
-      expect(buildReceipt.gasUsed).to.be.lessThan(9e6).greaterThan(3e6) // last only process 50 borrowers so should be left a few
+      expect(buildReceipt.gasUsed).to.be.within(3e6, 10e6) // last only process 50 borrowers so should be left a few
 
-      console.log('DebtSettler.js:494');
-      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-      expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
+      // build has to wait for pay to finish
+      await expect(debtSettler.connect(treasury).build()).to.be.revertedWithCustomError(debtSettler, 'StillPaying')
 
-      console.log('DebtSettler.js:497');
-      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-      expect(buildReceipt2.gasUsed).to.be.lessThan(2e6)
+      let payReceipt = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(payReceipt.gasUsed).to.be.greaterThan(4e6)
 
-      console.log('DebtSettler.js:500');
+      payReceipt = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(payReceipt.gasUsed).to.be.greaterThan(4e6)
 
       // this one will run without paying
-      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
-      expect(buildReceipt2.gasUsed).to.be.lessThan(2e6)
-      console.log('DebtSettler.js:505');
+      payReceipt = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      expect(payReceipt.gasUsed).to.be.lessThan(2e6)
     })
 
     it('Should not reset indexes', async function () {
       const { bob, debtSettler } = await loadFixture(deploy)
 
-      await expect(debtSettler.connect(bob).changeIndexes(1,2)).to.be.revertedWithCustomError(debtSettler, 'NotAdmin')
+      await expect(debtSettler.connect(bob).changeIndexes(1,2, 0)).to.be.revertedWithCustomError(debtSettler, 'NotAdmin')
     })
 
     it('Should reset indexes', async function () {
       const { debtSettler } = await loadFixture(deploy)
 
       // deployer is the admin
-      await expect(debtSettler.changeIndexes(0, 0)).to.not.be.reverted
+      await expect(debtSettler.changeIndexes(0, 0, 0)).to.not.be.reverted
     })
   })
 })

@@ -11,8 +11,6 @@ import {ILPool} from "../interfaces/IPool.sol";
 import "./PiAdmin.sol";
 import "../libraries/Errors.sol";
 
-import "hardhat/console.sol";
-
 /**
  * @title DebtSettler
  *
@@ -46,6 +44,7 @@ contract DebtSettler is PiAdmin {
     uint internal _lastIndexBuilt;
     uint internal _lastCredit;
     uint internal _lastIndexPaid;
+    uint internal _waitForPay;
 
     // Errors
     error InvalidPool();
@@ -96,6 +95,8 @@ contract DebtSettler is PiAdmin {
     function build() external onlyHandler nonReentrant {
         uint _length = _borrowers.length();
         if (_length == 0) return;
+        // Ensure each compleate build waits until the pay is done
+        if (_waitForPay > 0 || _lastIndexPaid > 0) revert StillPaying();
 
         uint _totalDebt;
 
@@ -114,8 +115,6 @@ contract DebtSettler is PiAdmin {
 
         for (uint _j = 0; _j < _length; _j++) {
             (address _borrower, uint _timestamp) = _borrowers.at(_j);
-
-            if (_timestamp >= _buildTimestamp) continue; // Prevent taking care of the "newest debts"
 
             uint _bDebt = _debt(_borrower);
 
@@ -152,13 +151,12 @@ contract DebtSettler is PiAdmin {
             // each loop use aprox 80k of gas
             if (gasleft() <= 100_000) {
                 _lastIndexBuilt = _i;
-                // console.log("Salio en: %s", _i);
                 return;
             }
         }
-
         _lastIndexBuilt = 0; // ensure that if ends always starts from 0
         _lastBuildTimestamp = block.timestamp;
+        _waitForPay = 1;
     }
 
     /**
@@ -170,7 +168,7 @@ contract DebtSettler is PiAdmin {
         // Ensure always pay after build is finished
         if (_lastIndexBuilt > 0) revert StillBuilding();
 
-        asset.approve(address(pool), _lastCredit);
+        asset.approve(address(pool), asset.balanceOf(address(this)));
 
         // keep going from last paid
         uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
@@ -182,10 +180,12 @@ contract DebtSettler is PiAdmin {
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
             (address _borrower, uint _credit) = _usersCredit.at(_i);
 
-            if (_credit > 0 ) {
-                if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
-                _usersCredit.set(_borrower, 0);
-            }
+            if (_credit == 0 ) continue;
+
+            if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
+            _usersCredit.set(_borrower, 0);
+
+            // _lastCredit -= _credit;
 
             // each loop use aprox 110k of gas
             if (gasleft() <= 150_000) {
@@ -195,6 +195,7 @@ contract DebtSettler is PiAdmin {
         } // for
 
         _lastIndexPaid = 0; // ensure that if ends always starts from 0
+        _waitForPay = 0;
     }
 
     /**
@@ -263,9 +264,10 @@ contract DebtSettler is PiAdmin {
      * @dev In case the indexes changes and the logic doesn't permit
      * to continue processing, we could reset the indexes (JiC).
      */
-    function changeIndexes(uint _built, uint _paid) external onlyAdmin {
+    function changeIndexes(uint _built, uint _paid, uint _wait) external onlyAdmin {
         _lastIndexBuilt = _built;
         _lastIndexPaid = _paid;
+        _waitForPay = _wait;
     }
 
     function _debt(address _borrower) internal view returns (uint) {
