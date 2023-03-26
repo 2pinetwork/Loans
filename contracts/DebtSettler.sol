@@ -136,7 +136,6 @@ contract DebtSettler is PiAdmin {
 
             uint _bDebt = _debt(_borrower);
             uint _elapsed = _buildTimestamp - _timestamp;
-            // Aqui quizas hay que meter un *1e18
             uint _credit = _amount * Math.sqrt(
                 _bDebt * _elapsed
             ) / _geometricMean;
@@ -166,7 +165,7 @@ contract DebtSettler is PiAdmin {
         // Ensure always pay after build is finished
         if (_lastIndexBuilt > 0) revert StillBuilding();
 
-        asset.approve(address(pool), asset.balanceOf(address(this)));
+        asset.approve(address(pool), _lastCredit));
 
         // keep going from last paid
         uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
@@ -178,12 +177,10 @@ contract DebtSettler is PiAdmin {
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
             (address _borrower, uint _credit) = _usersCredit.at(_i);
 
-            if (_credit == 0 ) continue;
+            if (_credit == 0) continue;
 
             if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
             _usersCredit.set(_borrower, 0);
-
-            // _lastCredit -= _credit;
 
             // each loop use aprox 110k of gas
             if (gasleft() <= 150_000) {
@@ -268,6 +265,5 @@ contract DebtSettler is PiAdmin {
 
     function _debt(address _borrower) internal view returns (uint) {
         return pool.debt(_borrower);
-        // return dToken.balanceOf(_borrower) + iToken.balanceOf(_borrower);
     }
 }

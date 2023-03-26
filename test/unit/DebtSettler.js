@@ -23,7 +23,7 @@ const setupCollateral = async function (fixtures, usersWithCollateral) {
   // let's use 1:1 collateral-borrow
   await expect(cPool.setCollateralRatio(1.0e18 + '')).to.emit(cPool, 'NewCollateralRatio')
 
-  if (usersWithCollateral == undefined)
+  if (usersWithCollateral === undefined)
     usersWithCollateral = [[bob, ethers.utils.parseUnits('9.9', 18)]]
 
   let promises = []
@@ -243,10 +243,10 @@ describe('Debt settler', async function () {
 
       // Now we can recall build/pay and pay the trent remaining debt
       // in the same block to prevent new interest from being generated
-      await network.provider.send("evm_setAutomine", [false]);
+      await network.provider.send('evm_setAutomine', [false])
       await debtSettler.connect(treasury).build() // without waitFor
       await debtSettler.connect(treasury).pay() // without waitFor
-      await network.provider.send("evm_setAutomine", [true]);
+      await network.provider.send('evm_setAutomine', [true])
       await mine(1)
 
       expect(await lPool['debt(address)'](bob.address)).to.be.equal(0)
@@ -473,7 +473,6 @@ describe('Debt settler', async function () {
       }
 
       await token.mint(debtSettler.address, 100e18 + '')
-      // await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('50'))
 
       // build consume aprox 10M of gas per 50 borrowers so we have to iterate at least 4 times
 
