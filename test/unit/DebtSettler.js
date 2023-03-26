@@ -452,7 +452,11 @@ describe('Debt settler', async function () {
 
       let amountOfBorrowers = 300
 
-      for (let index = 0; index < amountOfBorrowers; index++) {
+      const promises = [
+        token.mint(debtSettler.address, 100e18 + '')
+      ]
+
+      const borrowWithNewSigner = async () => {
         // get a signer
         let curSigner = ethers.Wallet.createRandom()
         // add it to Hardhat Network
@@ -469,10 +473,14 @@ describe('Debt settler', async function () {
 
         let signerDebt = await lPool['debt(address)'](curSigner.address)
 
-        expect(signerDebt).to.be.eq(1)
+        expect(signerDebt).to.be.within(1, 3) // async breaks the exact amount
       }
 
-      await token.mint(debtSettler.address, 100e18 + '')
+      for (let index = 0; index < amountOfBorrowers; index++) {
+        promises.push(borrowWithNewSigner())
+      }
+
+      await Promise.all(promises)
 
       // build consume aprox 10M of gas per 50 borrowers so we have to iterate at least 4 times
 

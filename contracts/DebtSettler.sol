@@ -165,7 +165,7 @@ contract DebtSettler is PiAdmin {
         // Ensure always pay after build is finished
         if (_lastIndexBuilt > 0) revert StillBuilding();
 
-        asset.approve(address(pool), _lastCredit));
+        asset.approve(address(pool), _lastCredit);
 
         // keep going from last paid
         uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
