@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {ILPool} from "../interfaces/IPool.sol";
 import "./PiAdmin.sol";
@@ -31,15 +32,18 @@ contract DebtSettler is PiAdmin {
     // Keep track of the credit for each borrower
     EnumerableMap.AddressToUintMap internal _usersCredit;
     // Keep track of borrowers
-    EnumerableSet.AddressSet internal _borrowers;
+    EnumerableMap.AddressToUintMap internal _borrowers;
 
     // Only HANDLER can call build/repay methods
     bytes32 public constant HANDLER_ROLE = keccak256("HANDLER_ROLE");
+
+    uint internal _buildTimestamp;
 
     // build/repay indexes to keep track last position.
     uint internal _lastIndexBuilt;
     uint internal _lastCredit;
     uint internal _lastIndexPaid;
+    uint internal _waitForPay;
 
     // Errors
     error InvalidPool();
@@ -90,36 +94,66 @@ contract DebtSettler is PiAdmin {
     function build() external onlyHandler nonReentrant {
         uint _length = _borrowers.length();
         if (_length == 0) return;
+        // Ensure each compleate build waits until the pay is done
+        if (_waitForPay > 0 || _lastIndexPaid > 0) revert StillPaying();
 
-        uint _totalDebt = dToken.totalSupply() + iToken.totalSupply();
-        if (_totalDebt == 0) return;
+        uint _totalDebt;
 
         // will always use first the "last balance snapshot"
         uint _amount = _lastCredit;
-        // If there's a new loop we save the current balance
-        if (_lastIndexBuilt == 0) _amount = _lastCredit = asset.balanceOf(address(this));
+
+        // If there's a new loop we save the current balance and update the build timestamp
+        if (_lastIndexBuilt == 0) {
+            _amount = _lastCredit = asset.balanceOf(address(this));
+            _buildTimestamp = block.timestamp;
+        }
 
         if (_amount == 0) return;
-        if (_amount > _totalDebt) _amount = _lastCredit =  _totalDebt;
 
-        uint i = _lastIndexBuilt == 0 ? 0 : (_lastIndexBuilt + 1);
+        uint _geometricMean;
 
-        for (i; i < _length; i++) {
-            address _borrower = _borrowers.at(i);
-            uint _credit = _amount * _debt(_borrower) / _totalDebt;
+        for (uint _j = 0; _j < _length; _j++) {
+            (address _borrower, uint _timestamp) = _borrowers.at(_j);
+
+            uint _bDebt = _debt(_borrower);
+
+            if (_bDebt == 0) continue;
+
+            _totalDebt += _bDebt;
+
+            _geometricMean += Math.sqrt(_bDebt * (_buildTimestamp - _timestamp));
+        }
+
+        if (_totalDebt == 0) return;
+        if (_amount > _totalDebt) _amount = _lastCredit = _totalDebt;
+
+        uint _i = _lastIndexBuilt == 0 ? 0 : (_lastIndexBuilt + 1);
+
+        for (_i; _i < _length; _i++) {
+            (address _borrower, uint _timestamp) = _borrowers.at(_i);
+
+            if (_timestamp >= _buildTimestamp) continue; // Prevent taking care of the "newest debts"
+
+            uint _bDebt = _debt(_borrower);
+            uint _elapsed = _buildTimestamp - _timestamp;
+            uint _credit = _amount * Math.sqrt(
+                _bDebt * _elapsed
+            ) / _geometricMean;
             (, uint _currentCredit) = _usersCredit.tryGet(_borrower);
 
             // we have to accumulate each time =)
             _usersCredit.set(_borrower, _credit + _currentCredit);
+            // update the timestamp
+            _borrowers.set(_borrower, _buildTimestamp);
 
             // each loop use aprox 80k of gas
             if (gasleft() <= 100_000) {
-                _lastIndexBuilt = i;
+                _lastIndexBuilt = _i;
                 return;
             }
         }
-
         _lastIndexBuilt = 0; // ensure that if ends always starts from 0
+        _waitForPay = 1;
     }
 
     /**
@@ -134,28 +168,29 @@ contract DebtSettler is PiAdmin {
         asset.approve(address(pool), _lastCredit);
 
         // keep going from last paid
-        uint i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
+        uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
 
         // just in case the records decrease in size before pay
-        if (i > _usersCredit.length()) i = _lastIndexPaid = 0;
+        if (_i > _usersCredit.length()) _i = _lastIndexPaid = 0;
 
-        for (i; i < _usersCredit.length(); i++) {
+        for (_i; _i < _usersCredit.length(); _i++) {
             // We should check for gasleft here, so we can repay the rest in the next tx if needed
-            (address _borrower, uint _credit) = _usersCredit.at(i);
+            (address _borrower, uint _credit) = _usersCredit.at(_i);
 
-            if (_credit > 0 ) {
-                if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
-                _usersCredit.set(_borrower, 0);
-            }
+            if (_credit == 0) continue;
 
-            // each loop use aprox 50k of gas
-            if (gasleft() <= 70_000) {
-                _lastIndexPaid = i;
+            if (dToken.balanceOf(_borrower) > 0) pool.repayFor(_borrower, _credit);
+            _usersCredit.set(_borrower, 0);
+
+            // each loop use aprox 110k of gas
+            if (gasleft() <= 150_000) {
+                _lastIndexPaid = _i;
                 return;
             }
         } // for
 
         _lastIndexPaid = 0; // ensure that if ends always starts from 0
+        _waitForPay = 0;
     }
 
     /**
@@ -163,17 +198,18 @@ contract DebtSettler is PiAdmin {
      */
     function clean() external onlyHandler nonReentrant {
         if (_lastIndexPaid > 0) revert StillPaying();
+
         address[] memory _toRemove = new address[](_usersCredit.length());
         uint _toRemoveLength = 0;
 
-        for (uint i = 0; i < _usersCredit.length(); i++) {
-            (address _borrower, uint _credit) = _usersCredit.at(i);
+        for (uint _i = 0; _i < _usersCredit.length(); _i++) {
+            (address _borrower, uint _credit) = _usersCredit.at(_i);
 
             if (_credit == 0) _toRemove[_toRemoveLength++] = _borrower;
         }
 
-        for (uint i = 0; i < _toRemoveLength; i++) {
-            _usersCredit.remove(_toRemove[i]);
+        for (uint _i = 0; _i < _toRemoveLength; _i++) {
+            _usersCredit.remove(_toRemove[_i]);
         }
     }
 
@@ -192,7 +228,7 @@ contract DebtSettler is PiAdmin {
      * @param _borrower The borrower address.
      */
     function addBorrower(address _borrower) external onlyPool nonReentrant {
-        _borrowers.add(_borrower);
+        _borrowers.set(_borrower, block.timestamp);
     }
 
     /**
@@ -221,12 +257,13 @@ contract DebtSettler is PiAdmin {
      * @dev In case the indexes changes and the logic doesn't permit
      * to continue processing, we could reset the indexes (JiC).
      */
-    function changeIndexes(uint _built, uint _paid) external onlyAdmin {
+    function changeIndexes(uint _built, uint _paid, uint _wait) external onlyAdmin {
         _lastIndexBuilt = _built;
         _lastIndexPaid = _paid;
+        _waitForPay = _wait;
     }
 
     function _debt(address _borrower) internal view returns (uint) {
-        return dToken.balanceOf(_borrower) + iToken.balanceOf(_borrower);
+        return pool.debt(_borrower);
     }
 }
