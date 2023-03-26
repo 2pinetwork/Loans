@@ -40,6 +40,7 @@ contract DebtSettler is PiAdmin {
     uint internal _buildTimestamp;
 
     // build/repay indexes to keep track last position.
+    uint internal _lastIndexBuilt;
     uint internal _lastCredit;
     uint internal _lastIndexPaid;
     uint internal _waitForPay;
