@@ -380,20 +380,21 @@ contract Controller is ERC20, Ownable, ReentrancyGuard {
         if (_toTransfer < _amount && totalSupply() != _shares)
             _shares = _toTransfer * _shares / _amount;
 
+        uint _withdrawalFee;
         if (_withFee) {
-            uint _withdrawalFee = _toTransfer * withdrawFee / RATIO_PRECISION;
+            _withdrawalFee = _toTransfer * withdrawFee / RATIO_PRECISION;
 
-            if (_withdrawalFee > 0) {
-                _toTransfer -= _withdrawalFee;
-
-                asset.safeTransfer(treasury, _withdrawalFee);
-                emit WithdrawalFee(_withdrawalFee);
-            }
+            if (_withdrawalFee > 0) _toTransfer -= _withdrawalFee;
         }
 
         if (_caller != _owner) _spendAllowance(_owner, _caller, _shares);
 
         _burn(_owner, _shares);
+
+        if (_withdrawalFee > 0) {
+            asset.safeTransfer(treasury, _withdrawalFee);
+            emit WithdrawalFee(_withdrawalFee);
+        }
 
         asset.safeTransfer(pool, _toTransfer);
 
