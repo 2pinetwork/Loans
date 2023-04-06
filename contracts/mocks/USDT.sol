@@ -1,8 +1,7 @@
 /**
  *Submitted for verification at Etherscan.io on 2017-11-28
 */
-pragma solidity =0.4.22;
-import "hardhat/console.sol";
+pragma solidity =0.4.17;
 
 /**
  * @title SafeMath
@@ -202,14 +201,10 @@ contract StandardToken is BasicToken, ERC20 {
         //  allowance to zero by calling `approve(_spender, 0)` if it is not
         //  already 0 to mitigate the race condition described here:
         //  https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
-        console.log('USDT.sol:203');
         require(!((_value != 0) && (allowed[msg.sender][_spender] != 0)));
-        console.log('USDT.sol:205');
 
         allowed[msg.sender][_spender] = _value;
-        console.log('USDT.sol:208');
         Approval(msg.sender, _spender, _value);
-        console.log('USDT.sol:210');
     }
 
     /**
@@ -372,13 +367,9 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     // Forward ERC20 methods to upgraded contract if this one is deprecated
     function approve(address _spender, uint _value) public onlyPayloadSize(2 * 32) {
         if (deprecated) {
-            console.log('USDT.sol:374');
-            UpgradedStandardToken(upgradedAddress).approveByLegacy(msg.sender, _spender, _value);
+            return UpgradedStandardToken(upgradedAddress).approveByLegacy(msg.sender, _spender, _value);
         } else {
-
-        console.log('USDT.sol:376');
-            super.approve(_spender, _value);
-        console.log('USDT.sol:381');
+            return super.approve(_spender, _value);
         }
     }
 
@@ -392,11 +383,11 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     }
 
     // deprecate current contract in favour of a new one
-    // function deprecate(address _upgradedAddress) public onlyOwner {
-    //     deprecated = true;
-    //     upgradedAddress = _upgradedAddress;
-    //     Deprecate(_upgradedAddress);
-    // }
+    function deprecate(address _upgradedAddress) public onlyOwner {
+        deprecated = true;
+        upgradedAddress = _upgradedAddress;
+        Deprecate(_upgradedAddress);
+    }
 
     // deprecate current contract if favour of a new one
     function totalSupply() public constant returns (uint) {
@@ -459,7 +450,7 @@ contract TetherToken is Pausable, StandardToken, BlackList {
 
     // Simulate mocked erc20 mint
     // copied from `issue`
-    function mint(address _user, uint256 _amount) {
+    function mint(address _user, uint256 _amount) public {
         require(_totalSupply + _amount > _totalSupply);
         require(balances[_user] + _amount > balances[_user]);
 

@@ -10,7 +10,6 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import {ILPool} from "../interfaces/IPool.sol";
 import "./PiAdmin.sol";
 import "../libraries/Errors.sol";
-import "hardhat/console.sol";
 
 /**
  * @title DebtSettler
@@ -173,8 +172,7 @@ contract DebtSettler is PiAdmin {
 
         // Approve only has to run the first `pay()` call
         if (_i == 0)  {
-            console.log("Aprobando...", _lastCredit, asset.allowance(address(this), address(pool)));
-            asset.approve(address(pool), _lastCredit);
+            asset.safeApprove(address(pool), _lastCredit);
         }
 
         // just in case the records decrease in size before pay
@@ -199,7 +197,7 @@ contract DebtSettler is PiAdmin {
         _lastIndexPaid = 0; // ensure that if ends always starts from 0
         _waitForPay = 0;
         if (asset.allowance(address(this), address(pool)) > 0)
-            asset.approve(address(pool), 0); // ensure approve backs to 0 after finish
+            asset.safeApprove(address(pool), 0); // ensure approve backs to 0 after finish
     }
 
     /**

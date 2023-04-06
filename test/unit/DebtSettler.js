@@ -525,7 +525,7 @@ describe('Debt settler', async function () {
       expect(payReceipt.gasUsed).to.be.lessThan(2e6)
     })
 
-    it.only('REPAYMENT - debt building process DoS WITH USDT', async function () {
+    it('REPAYMENT - debt building process DoS WITH USDT', async function () {
       const fixtures = await loadFixture(deployUSDT)
       const {
         alice,
@@ -595,7 +595,7 @@ describe('Debt settler', async function () {
       buildReceipt = await buildTx.wait()
       // expect(buildReceipt.gasUsed).to.be.lessThan(5e6) // last only process 50 borrowers so should be left a few
       console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
-      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 11e6})).wait()
+      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
       // expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
       console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
       buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
@@ -768,7 +768,7 @@ describe('Debt settler', async function () {
       buildReceipt = await buildTx.wait()
       // expect(buildReceipt.gasUsed).to.be.lessThan(5e6) // last only process 50 borrowers so should be left a few
       console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
-      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 12e6})).wait()
       // expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
       console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
       buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
