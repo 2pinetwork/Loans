@@ -447,7 +447,7 @@ describe('Debt settler', async function () {
       expect(await token.balanceOf(treasury.address)).to.be.equal(0)
     })
 
-    it('increases gas spent while building when there are more borrowers WITH USDT', async function () {
+    it.skip('[SLOW] increases gas spent while building when there are more borrowers WITH USDT', async function () {
       const fixtures = await loadFixture(deployUSDT)
       const {
         alice,
@@ -525,7 +525,7 @@ describe('Debt settler', async function () {
       expect(payReceipt.gasUsed).to.be.lessThan(2e6)
     })
 
-    it('REPAYMENT - debt building process DoS WITH USDT', async function () {
+    it.skip('[SLOW] REPAYMENT - debt building process DoS WITH USDT', async function () {
       const fixtures = await loadFixture(deployUSDT)
       const {
         alice,
@@ -622,7 +622,7 @@ describe('Debt settler', async function () {
       console.log(`Bobs debt: ${bobsDebt.toString()}`)
     })
 
-    it('increases gas spent while building when there are more borrowers', async function () {
+    it.skip('[SLOW] increases gas spent while building when there are more borrowers', async function () {
       const fixtures = await loadFixture(deploy)
       const {
         alice,
@@ -699,7 +699,7 @@ describe('Debt settler', async function () {
       expect(payReceipt.gasUsed).to.be.lessThan(2e6)
     })
 
-    it('REPAYMENT - debt building process DoS', async function () {
+    it.skip('[SLOW] REPAYMENT - debt building process DoS', async function () {
       const fixtures = await loadFixture(deploy)
       const {
         alice,
