@@ -89,7 +89,7 @@ contract ERC20Basic {
  * @title ERC20 interface
  * @dev see https://github.com/ethereum/EIPs/issues/20
  */
-contract ERC20 is ERC20Basic {
+contract TERC20 is ERC20Basic {
     function allowance(address owner, address spender) public constant returns (uint);
     function transferFrom(address from, address to, uint value) public;
     function approve(address spender, uint value) public;
@@ -155,7 +155,7 @@ contract BasicToken is Ownable, ERC20Basic {
  * @dev https://github.com/ethereum/EIPs/issues/20
  * @dev Based oncode by FirstBlood: https://github.com/Firstbloodio/token/blob/master/smart_contract/FirstBloodToken.sol
  */
-contract StandardToken is BasicToken, ERC20 {
+contract StandardToken is BasicToken, TERC20 {
 
     mapping (address => mapping (address => uint)) public allowed;
 
