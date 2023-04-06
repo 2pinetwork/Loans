@@ -171,9 +171,7 @@ contract DebtSettler is PiAdmin {
         uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
 
         // Approve only has to run the first `pay()` call
-        if (_i == 0)  {
-            asset.safeApprove(address(pool), _lastCredit);
-        }
+        if (_i == 0) asset.safeApprove(address(pool), _lastCredit);
 
         // just in case the records decrease in size before pay
         if (_i > _usersCredit.length()) _i = _lastIndexPaid = 0;
