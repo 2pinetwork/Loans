@@ -121,6 +121,7 @@ module.exports = {
     ],
     overrides: {
       'contracts/mocks/PiPriceOracle.sol': { version: '0.6.6' },
+      'contracts/mocks/USDT.sol': { version: '0.4.22' },
     },
   },
   etherscan: {

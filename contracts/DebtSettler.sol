@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import {ILPool} from "../interfaces/IPool.sol";
 import "./PiAdmin.sol";
 import "../libraries/Errors.sol";
+import "hardhat/console.sol";
 
 /**
  * @title DebtSettler
@@ -50,6 +51,7 @@ contract DebtSettler is PiAdmin {
     error StillBuilding();
     error StillPaying();
     error UnknownSender();
+    error ZeroAmount();
 
     /**
      * @dev Initialize the contract.
@@ -164,11 +166,16 @@ contract DebtSettler is PiAdmin {
     function pay() external onlyHandler nonReentrant {
         // Ensure always pay after build is finished
         if (_lastIndexBuilt > 0) revert StillBuilding();
-
-        asset.approve(address(pool), _lastCredit);
+        if (_lastCredit == 0) revert ZeroAmount();
 
         // keep going from last paid
         uint _i = _lastIndexPaid == 0 ? 0 : (_lastIndexPaid + 1);
+
+        // Approve only has to run the first `pay()` call
+        if (_i == 0)  {
+            console.log("Aprobando...", _lastCredit, asset.allowance(address(this), address(pool)));
+            asset.approve(address(pool), _lastCredit);
+        }
 
         // just in case the records decrease in size before pay
         if (_i > _usersCredit.length()) _i = _lastIndexPaid = 0;
@@ -191,6 +198,8 @@ contract DebtSettler is PiAdmin {
 
         _lastIndexPaid = 0; // ensure that if ends always starts from 0
         _waitForPay = 0;
+        if (asset.allowance(address(this), address(pool)) > 0)
+            asset.approve(address(pool), 0); // ensure approve backs to 0 after finish
     }
 
     /**
